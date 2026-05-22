@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteEventAction, saveEventAction, type EventSaveState } from "@/app/actions/events";
-import { renderPosterPage } from "@/components/events/poster-page-renderers";
 import {
   buildPosterDesign,
   posterTemplateIds,
@@ -19,6 +18,10 @@ import {
   type PosterVisibleFieldId,
   type VenueEventRecord,
 } from "@/lib/event-types";
+import {
+  usePosterGeneration,
+  type PosterGenerationProvider,
+} from "./use-poster-generation";
 import styles from "./venue-workspace.module.scss";
 
 type VenueWorkspaceProps = {
@@ -73,6 +76,59 @@ const wizardSteps = [
   { id: 1, eyebrow: "Paso 2", title: "Dirección" },
   { id: 2, eyebrow: "Paso 3", title: "Review" },
 ] as const;
+
+type EditorSectionId = "essentials" | "story" | "visual" | "operations" | "ticketing" | "assets";
+
+const providerOptions = [
+  {
+    id: "pollinations",
+    title: "Pollinations",
+    subtitle: "Gratis · Sin registro",
+    detail: "Instant, no key needed",
+    setupKey: null,
+    setupHref: "",
+  },
+  {
+    id: "pollinations-alt",
+    title: "Pollinations · Noir",
+    subtitle: "Gratis · Sin registro",
+    detail: "Free alt mood, no key needed",
+    setupKey: null,
+    setupHref: "",
+  },
+  {
+    id: "huggingface",
+    title: "Hugging Face · FLUX Schnell",
+    subtitle: "Gratis · API key requerida",
+    detail: "Free key at hf.co",
+    setupKey: "foro_hf_key",
+    setupHref: "https://huggingface.co/settings/tokens",
+  },
+  {
+    id: "together",
+    title: "Together AI · FLUX Turbo",
+    subtitle: "$25 créditos gratis al registrarse",
+    detail: "Best quality",
+    setupKey: "foro_together_key",
+    setupHref: "https://api.together.xyz/settings/api-keys",
+  },
+] as const satisfies ReadonlyArray<{
+  id: PosterGenerationProvider;
+  title: string;
+  subtitle: string;
+  detail: string;
+  setupKey: string | null;
+  setupHref: string;
+}>;
+
+const defaultSectionState: Record<EditorSectionId, boolean> = {
+  essentials: true,
+  story: false,
+  visual: false,
+  operations: false,
+  ticketing: false,
+  assets: false,
+};
 
 const posterFieldOptions: Array<{ id: PosterVisibleFieldId; label: string; hint: string }> = [
   { id: "venue", label: "Venue", hint: "Nombre principal del lugar" },
@@ -506,13 +562,48 @@ function normalizeDraftRecord(event: VenueEventRecord): VenueEventDraft {
   return { ...event };
 }
 
+function buildEventTimingFromStart(startsAt: string) {
+  const start = new Date(startsAt);
+  const endsAt = new Date(start);
+  endsAt.setHours(start.getHours() + 2, 45, 0, 0);
+  const doorTime = new Date(start);
+  doorTime.setHours(start.getHours() - 1, 0, 0, 0);
+  const soundcheckTime = new Date(start);
+  soundcheckTime.setHours(start.getHours() - 2, 30, 0, 0);
+
+  return {
+    startsAt: start.toISOString(),
+    endsAt: endsAt.toISOString(),
+    doorTime: doorTime.toISOString(),
+    soundcheckTime: soundcheckTime.toISOString(),
+  };
+}
+
+function getProviderLabel(provider: PosterGenerationProvider) {
+  const option = providerOptions.find((item) => item.id === provider);
+  return option?.title ?? provider;
+}
+
 export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   const safeEvents = useMemo(() => (Array.isArray(initialEvents) ? initialEvents : []), [initialEvents]);
   const router = useRouter();
+  const libraryPanelRef = useRef<HTMLElement | null>(null);
+  const visualSectionRef = useRef<HTMLDetailsElement | null>(null);
+  const providerSectionRef = useRef<HTMLDivElement | null>(null);
   const [emptyDraft] = useState(() => createEmptyDraft());
   const [selectedId, setSelectedId] = useState(safeEvents[0]?.id ?? "new");
   const [draft, setDraft] = useState<VenueEventDraft>(() =>
     safeEvents[0] ? normalizeDraftRecord(safeEvents[0]) : emptyDraft,
+  );
+  const [openSections, setOpenSections] = useState<Record<EditorSectionId, boolean>>(defaultSectionState);
+  const [quickStartOpen, setQuickStartOpen] = useState(false);
+  const [quickStartStep, setQuickStartStep] = useState<0 | 1 | 2>(0);
+  const [quickStartTitle, setQuickStartTitle] = useState("");
+  const [quickStartStartsAt, setQuickStartStartsAt] = useState(toDateTimeLocalValue(emptyDraft.startsAt));
+  const [quickStartVenue, setQuickStartVenue] = useState("");
+  const [quickStartLineup, setQuickStartLineup] = useState("");
+  const [copyAssistLoadingField, setCopyAssistLoadingField] = useState<"summary" | "description" | "genre" | null>(
+    null,
   );
   const [pendingHeroPreview, setPendingHeroPreview] = useState("");
   const [pendingHeroFileName, setPendingHeroFileName] = useState("");
@@ -523,6 +614,29 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   const [selectedIdeaPreset, setSelectedIdeaPreset] = useState<(typeof posterIdeaPresets)[number]["id"]>(
     posterIdeaPresets[0].id,
   );
+  const [localPosterProvider, setLocalPosterProvider] = useState<PosterGenerationProvider>("pollinations");
+  const [providerKeys, setProviderKeys] = useState(() => {
+    if (typeof window === "undefined") {
+      return { huggingface: "", together: "" };
+    }
+
+    return {
+      huggingface: window.localStorage.getItem("foro_hf_key") ?? "",
+      together: window.localStorage.getItem("foro_together_key") ?? "",
+    };
+  });
+  const [providerKeyDrafts, setProviderKeyDrafts] = useState(() => {
+    if (typeof window === "undefined") {
+      return { huggingface: "", together: "" };
+    }
+
+    return {
+      huggingface: window.localStorage.getItem("foro_hf_key") ?? "",
+      together: window.localStorage.getItem("foro_together_key") ?? "",
+    };
+  });
+  const [expandedProviderSetup, setExpandedProviderSetup] = useState<Exclude<PosterGenerationProvider, "pollinations" | "pollinations-alt"> | null>(null);
+  const [loadedPosterUrl, setLoadedPosterUrl] = useState("");
   const [aiDirectionNote, setAiDirectionNote] = useState("");
   const [aiProposals, setAiProposals] = useState<PosterAiProposal[]>([]);
   const [aiGenerationId, setAiGenerationId] = useState("");
@@ -547,6 +661,11 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     () => (pendingHeroPreview ? { ...draft, heroImage: pendingHeroPreview } : draft),
     [draft, pendingHeroPreview],
   );
+  const getLocalProviderKey = useCallback(
+    (provider: Exclude<PosterGenerationProvider, "pollinations" | "pollinations-alt">) => providerKeys[provider],
+    [providerKeys],
+  );
+  const localPosterGeneration = usePosterGeneration(getLocalProviderKey);
   const templateOptions = useMemo(
     () =>
       posterTemplateIds.filter((templateId) => {
@@ -562,6 +681,10 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       }),
     [draft.designVariant],
   );
+  const localPosterProviderConnected =
+    localPosterProvider === "pollinations" || localPosterProvider === "pollinations-alt"
+      ? true
+      : Boolean(providerKeys[localPosterProvider]);
 
   const cleanupAiPosterUrls = useCallback(async (urls: string[], keepUrl?: string) => {
     const posterUrls = uniqueStrings(urls).filter((url) => url !== keepUrl);
@@ -645,23 +768,30 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       setDeleteConfirmation("");
       setSelectedId("new");
       setDraft(emptyDraft);
+      setOpenSections(defaultSectionState);
+      setQuickStartOpen(false);
+      setQuickStartStep(0);
       setPendingHeroPreview("");
       setPendingHeroFileName("");
       setPreviewScreen("preview");
       setDesignWizardStep(0);
       setMaxUnlockedWizardStep(0);
       setDesignSourceMode("local");
+      setLocalPosterProvider("pollinations");
+      setExpandedProviderSetup(null);
+      setLoadedPosterUrl("");
       setAiDirectionNote("");
       setAiProposals([]);
       setSelectedAiProposalId(null);
       setAppliedAiProposalId(null);
       setLastAiGenerationSignature("");
       setAiStatus({ loading: false, error: "" });
+      localPosterGeneration.reset();
     }, 0);
 
     router.refresh();
     return () => window.clearTimeout(timeoutId);
-  }, [deleteState.deletedEventId, deleteState.ok, emptyDraft, router]);
+  }, [deleteState.deletedEventId, deleteState.ok, emptyDraft, localPosterGeneration, router]);
 
   useEffect(() => {
     if (!saveState.ok) {
@@ -714,14 +844,6 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     () => (draft.posterVisibleFields?.length ? draft.posterVisibleFields : posterFieldOptions.map((field) => field.id)),
     [draft.posterVisibleFields],
   );
-  const previewRelatedEvents = useMemo(
-    () =>
-      safeEvents
-        .filter((event) => event.id !== draft.id && event.slug !== draft.slug)
-        .slice(0, 3)
-        .map((event) => ({ slug: event.slug, title: event.title })),
-    [draft.id, draft.slug, safeEvents],
-  );
 
   const financialModel = useMemo(() => {
     const grossTicket = draft.ticketPriceMXN + draft.ticketFeeMXN;
@@ -768,20 +890,31 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     [generatedAiContext, generatedAiPrompt],
   );
   const aiProposalsAreCurrent = Boolean(aiProposals.length > 0 && lastAiGenerationSignature === currentAiSignature);
-  const canAdvanceFromStep0 = Boolean(
-    draft.title.trim() &&
-      draft.summary.trim() &&
-      draft.description.trim() &&
-      draft.venueName.trim() &&
-      draft.venueAddress.trim() &&
-      (draft.lineup ?? []).length > 0 &&
-      visiblePosterFields.length > 0,
+  const essentialsComplete = Boolean(
+    draft.title.trim() && draft.startsAt && draft.venueName.trim() && (draft.lineup ?? []).length > 0,
   );
+  const storyHasContent = Boolean(
+    draft.summary.trim() || draft.description.trim() || (draft.genre ?? []).length > 0,
+  );
+  const canAdvanceFromStep0 = essentialsComplete;
   const canAdvanceFromStep1 =
     designSourceMode === "local"
-      ? Boolean(selectedPreset && (draft.designTemplateId ?? generatedDesign.templateId))
+      ? Boolean(selectedPreset && localPosterProviderConnected)
       : Boolean(hasAppliedSelectedAiProposal && aiProposalsAreCurrent && !aiStatus.loading);
   const canOpenReviewTabs = designWizardStep === 2;
+  const generatedPosterProviderLabel = getProviderLabel(localPosterGeneration.provider);
+  const effectivePosterReferenceUrls =
+    designSourceMode === "local" && localPosterGeneration.imageUrl
+      ? [localPosterGeneration.imageUrl]
+      : draft.posterReferenceUrls ?? [];
+  const effectivePosterAssetMode =
+    designSourceMode === "local" && localPosterGeneration.imageUrl
+      ? ("banana-pro" as NonNullable<VenueEventRecord["posterAssetMode"]>)
+      : (draft.posterAssetMode ?? "graphic-only");
+  const effectivePosterArtDirection =
+    designSourceMode === "local" && localPosterGeneration.imageUrl
+      ? `${selectedPreset.prompt} via ${generatedPosterProviderLabel}`
+      : draft.posterArtDirection ?? "";
 
   useEffect(() => {
     transientAiUrlsRef.current = aiProposals.map((proposal) => proposal.poster_url);
@@ -789,12 +922,22 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
 
   function applyEvent(event: VenueEventRecord | null) {
     setDraft(event ? normalizeDraftRecord(event) : emptyDraft);
+    setOpenSections(defaultSectionState);
+    setQuickStartOpen(false);
+    setQuickStartStep(0);
+    setQuickStartTitle(event?.title ?? emptyDraft.title);
+    setQuickStartStartsAt(toDateTimeLocalValue(event?.startsAt ?? emptyDraft.startsAt));
+    setQuickStartVenue(event?.venueName ?? emptyDraft.venueName);
+    setQuickStartLineup((event?.lineup ?? emptyDraft.lineup).join(", "));
     setPendingHeroPreview("");
     setPendingHeroFileName("");
     setPreviewScreen("preview");
     setDesignWizardStep(0);
     setMaxUnlockedWizardStep(0);
     setDesignSourceMode("local");
+    setLocalPosterProvider("pollinations");
+    setExpandedProviderSetup(null);
+    setLoadedPosterUrl("");
     setAiDirectionNote("");
     setAiProposals([]);
     setAiGenerationId("");
@@ -802,6 +945,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     setAppliedAiProposalId(null);
     setLastAiGenerationSignature("");
     setAiStatus({ loading: false, error: "" });
+    localPosterGeneration.reset();
   }
 
   function selectEvent(id: string) {
@@ -822,6 +966,239 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       ...current,
       [key]: value,
     }));
+  }
+
+  function toggleSection(sectionId: EditorSectionId) {
+    setOpenSections((current) => ({
+      ...current,
+      [sectionId]: !current[sectionId],
+    }));
+  }
+
+  function openVisualDirectionSection() {
+    setOpenSections((current) => ({
+      ...current,
+      visual: true,
+    }));
+
+    window.requestAnimationFrame(() => {
+      visualSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function openQuickStartForNewEvent() {
+    selectEvent("new");
+    setQuickStartTitle("");
+    setQuickStartStartsAt(toDateTimeLocalValue(emptyDraft.startsAt));
+    setQuickStartVenue("");
+    setQuickStartLineup("");
+    setQuickStartStep(0);
+    setQuickStartOpen(true);
+  }
+
+  function advanceQuickStart() {
+    if (quickStartStep === 0 && !quickStartTitle.trim()) {
+      return;
+    }
+
+    if (quickStartStep === 1 && (!quickStartStartsAt || !quickStartVenue.trim())) {
+      return;
+    }
+
+    if (quickStartStep === 2 && !quickStartLineup.trim()) {
+      return;
+    }
+
+    if (quickStartStep < 2) {
+      setQuickStartStep((current) => (current + 1) as 0 | 1 | 2);
+      return;
+    }
+
+    const timing = buildEventTimingFromStart(new Date(quickStartStartsAt).toISOString());
+    const lineup = splitCommaList(quickStartLineup);
+
+    setDraft((current) => ({
+      ...current,
+      title: quickStartTitle.trim(),
+      venueName: quickStartVenue.trim(),
+      lineup,
+      startsAt: timing.startsAt,
+      endsAt: timing.endsAt,
+      doorTime: timing.doorTime,
+      soundcheckTime: timing.soundcheckTime,
+    }));
+    setQuickStartOpen(false);
+    setOpenSections({
+      ...defaultSectionState,
+      visual: true,
+    });
+    setMaxUnlockedWizardStep(1);
+    setDesignWizardStep(1);
+    setPreviewScreen("preview");
+    window.requestAnimationFrame(() => {
+      visualSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function dismissQuickStartToFullEditor() {
+    setQuickStartOpen(false);
+    setOpenSections((current) => ({
+      ...current,
+      essentials: true,
+    }));
+  }
+
+  async function suggestFieldCopy(field: "summary" | "description" | "genre") {
+    setCopyAssistLoadingField(field);
+
+    try {
+      const response = await fetch("/api/venue-copy-assist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          field,
+          title: draft.title,
+          lineup: draft.lineup.join(", "),
+          venue: draft.venueName,
+          genres: draft.genre.join(", "),
+        }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as { ok?: boolean; text?: string };
+      const text = payload.ok ? payload.text?.trim() ?? "" : "";
+
+      if (!text) {
+        return;
+      }
+
+      if (field === "summary") {
+        updateDraft("summary", text);
+      } else if (field === "description") {
+        updateDraft("description", text);
+      } else {
+        updateDraft("genre", splitCommaList(text));
+      }
+    } catch {
+      // Silent failure by design.
+    } finally {
+      setCopyAssistLoadingField((current) => (current === field ? null : current));
+    }
+  }
+
+  function persistProviderKey(provider: Exclude<PosterGenerationProvider, "pollinations" | "pollinations-alt">) {
+    const storageKey = provider === "huggingface" ? "foro_hf_key" : "foro_together_key";
+    const nextValue = providerKeyDrafts[provider].trim();
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, nextValue);
+    }
+
+    setProviderKeys((current) => ({
+      ...current,
+      [provider]: nextValue,
+    }));
+    setExpandedProviderSetup(null);
+  }
+
+  function selectGenerationProvider(provider: PosterGenerationProvider) {
+    setLocalPosterProvider(provider);
+
+    if (provider === "pollinations" || provider === "pollinations-alt") {
+      setExpandedProviderSetup(null);
+      return;
+    }
+
+    if (!providerKeys[provider]) {
+      setExpandedProviderSetup(provider);
+    } else {
+      setExpandedProviderSetup(null);
+    }
+  }
+
+  async function triggerLocalPosterGeneration() {
+    setMaxUnlockedWizardStep(2);
+    forceWizardStep(2);
+    setPreviewScreen("preview");
+    setLoadedPosterUrl("");
+    await localPosterGeneration.generate(
+      {
+        title: draft.title,
+        summary: draft.summary,
+        lineup: draft.lineup,
+        venueName: draft.venueName,
+        startsAt: draft.startsAt,
+      },
+      selectedPreset.id,
+      localPosterProvider,
+    );
+  }
+
+  function regenerateLocalPoster() {
+    setLoadedPosterUrl("");
+    localPosterGeneration.regenerate();
+  }
+
+  function handleGeneratePosterCta() {
+    openVisualDirectionSection();
+
+    if (designWizardStep === 0) {
+      if (canAdvanceFromStep0) {
+        setMaxUnlockedWizardStep(1);
+        setDesignWizardStep(1);
+      }
+
+      return;
+    }
+
+    if (designWizardStep === 1) {
+      if (designSourceMode === "local" && canAdvanceFromStep1) {
+        void triggerLocalPosterGeneration();
+        return;
+      }
+
+      if (designSourceMode === "ai" && canAdvanceFromStep1) {
+        goToNextWizardStep();
+      }
+      return;
+    }
+
+    setPreviewScreen("preview");
+  }
+
+  function goBackToEvents() {
+    libraryPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function jumpBackToProviderSelector() {
+    forceWizardStep(1);
+    setOpenSections((current) => ({
+      ...current,
+      visual: true,
+    }));
+    window.requestAnimationFrame(() => {
+      providerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  async function downloadGeneratedPoster() {
+    if (!localPosterGeneration.imageUrl) {
+      return;
+    }
+
+    const response = await fetch(localPosterGeneration.imageUrl);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `poster-${draft.title.toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   function addOperationalMoment() {
@@ -894,10 +1271,6 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       designMotifs: preset.motifs,
     }));
     setPreviewScreen("preview");
-  }
-
-  function updateLocalPhotoUsage(enabled: boolean) {
-    updateDraft("posterAssetMode", enabled ? "uploaded-hero" : "graphic-only");
   }
 
   function switchDesignSourceMode(mode: "local" | "ai") {
@@ -1108,6 +1481,20 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
 
   const resolvedSlug = saveState.slug ?? draft.slug;
   const publicHref = resolvedSlug ? `/events/${resolvedSlug}` : "";
+  const essentialsSectionClassName = `${styles.formSection} ${
+    essentialsComplete ? styles.sectionStatusReady : styles.sectionStatusAlert
+  }`;
+  const storySectionClassName = `${styles.formSection} ${
+    storyHasContent ? styles.sectionStatusStoryReady : styles.sectionStatusAccent
+  }`;
+  const visualSectionClassName = `${styles.formSection} ${styles.designSection} ${
+    designSourceMode === "ai" ? styles.designSectionAiMode : styles.designSectionLocalMode
+  } ${styles.sectionStatusAccent}`;
+  const operationsSectionClassName = `${styles.formSection} ${styles.sectionStatusNeutral}`;
+  const ticketingSectionClassName = `${styles.formSection} ${styles.revenueSection} ${
+    openSections.ticketing ? styles.sectionStatusEditing : styles.sectionStatusNeutral
+  }`;
+  const assetsSectionClassName = `${styles.formSection} ${styles.sectionStatusNeutral}`;
 
   return (
     <main className={styles.page}>
@@ -1138,12 +1525,12 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
         </header>
 
         <section className={styles.workspaceLayout}>
-          <aside className={styles.libraryPanel}>
+          <aside ref={libraryPanelRef} className={styles.libraryPanel}>
             <div className={styles.panelHeader}>
               <p>Biblioteca</p>
               <h2>Eventos del venue</h2>
             </div>
-            <button type="button" className={styles.createButton} onClick={() => selectEvent("new")}>
+            <button type="button" className={styles.createButton} onClick={openQuickStartForNewEvent}>
               Crear nuevo evento
             </button>
             <div className={styles.eventList}>
@@ -1176,31 +1563,31 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
               <input type="hidden" name="designVariant" value={draft.designVariant ?? ""} />
               <input type="hidden" name="designMotifs" value={(draft.designMotifs ?? []).join(",")} />
               <input type="hidden" name="posterVisibleFields" value={visiblePosterFields.join(",")} />
-              <input type="hidden" name="posterArtDirection" value={draft.posterArtDirection ?? ""} />
-              <input type="hidden" name="posterReferenceUrls" value={(draft.posterReferenceUrls ?? []).join("\n")} />
-              <input type="hidden" name="posterAssetMode" value={draft.posterAssetMode ?? "graphic-only"} />
+              <input type="hidden" name="posterArtDirection" value={effectivePosterArtDirection} />
+              <input type="hidden" name="posterReferenceUrls" value={effectivePosterReferenceUrls.join("\n")} />
+              <input type="hidden" name="posterAssetMode" value={effectivePosterAssetMode} />
               <input type="hidden" name="operationalMoments" value={JSON.stringify(draft.operationalMoments ?? [])} />
 
               <div className={styles.formSections}>
-                <details className={styles.formSection} open>
-                  <summary>
+                <details className={essentialsSectionClassName} open={openSections.essentials}>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("essentials"); }}>
                     <span className={styles.summaryLabel}>
-                      <span className={styles.summaryIcon} aria-hidden="true">◫</span>
-                      <span>Datos base del evento</span>
+                      <span className={styles.summaryIcon} aria-hidden="true">🎯</span>
+                      <span>Lo esencial</span>
                     </span>
                   </summary>
                   <div className={styles.sectionHintRibbon}>
                     <article className={styles.infoChip}>
                       <span aria-hidden="true">✎</span>
-                      <strong>Identidad</strong>
+                      <strong>Título</strong>
                     </article>
                     <article className={styles.infoChip}>
-                      <span aria-hidden="true">⌘</span>
-                      <strong>Contexto</strong>
+                      <span aria-hidden="true">◷</span>
+                      <strong>Fecha</strong>
                     </article>
                     <article className={styles.infoChip}>
-                      <span aria-hidden="true">◔</span>
-                      <strong>SEO + poster</strong>
+                      <span aria-hidden="true">♫</span>
+                      <strong>Lineup</strong>
                     </article>
                   </div>
                   <div className={styles.formGrid}>
@@ -1209,241 +1596,139 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                         <strong>Título</strong>
                         <small>Nombre principal que dominará la página y el poster.</small>
                       </span>
-                      <input name="title" value={draft.title} onChange={(event) => updateDraft("title", event.target.value)} />
+                      <input
+                        name="title"
+                        value={draft.title}
+                        placeholder="Ej: Midnight Cumbia Systems"
+                        onChange={(event) => updateDraft("title", event.target.value)}
+                      />
                     </label>
-                    <label className={`${styles.fullWidth} ${styles.fieldCard}`}>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
                       <span className={styles.fieldLabel}>
-                        <strong>≈ Resumen corto</strong>
-                        <small>Hook rápido para listings, previews y lectura inmediata.</small>
+                        <strong>◷ Inicio</strong>
+                        <small>La fecha que activa el resto del storytelling y la operación.</small>
                       </span>
-                      <input name="summary" value={draft.summary} onChange={(event) => updateDraft("summary", event.target.value)} />
-                    </label>
-                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardEditorial}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>¶ Descripción pública</strong>
-                        <small>Contexto editorial para sitio, share cards y brief creativo.</small>
-                      </span>
-                      <textarea name="description" rows={5} value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
+                      <input
+                        type="datetime-local"
+                        name="startsAt"
+                        value={toDateTimeLocalValue(draft.startsAt)}
+                        onChange={(event) => updateDraft("startsAt", new Date(event.target.value).toISOString())}
+                      />
                     </label>
                     <label className={`${styles.fieldCard} ${styles.fieldCardVenue}`}>
                       <span className={styles.fieldLabel}>
                         <strong>⌂ Venue</strong>
-                        <small>Lugar principal visible al público.</small>
+                        <small>Nombre principal visible al público.</small>
                       </span>
-                      <input name="venueName" value={draft.venueName} onChange={(event) => updateDraft("venueName", event.target.value)} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◷ Timezone</strong>
-                        <small>Controla fechas, horarios y consistencia de publicación.</small>
-                      </span>
-                      <input name="timezone" value={draft.timezone} onChange={(event) => updateDraft("timezone", event.target.value)} />
-                    </label>
-                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardVenue}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>⌖ Dirección</strong>
-                        <small>Ubicación completa para mapa, CTA y texto obligatorio.</small>
-                      </span>
-                      <input name="venueAddress" value={draft.venueAddress} onChange={(event) => updateDraft("venueAddress", event.target.value)} />
+                      <input
+                        name="venueName"
+                        value={draft.venueName}
+                        placeholder="Ej: Foro GDL"
+                        onChange={(event) => updateDraft("venueName", event.target.value)}
+                      />
                     </label>
                     <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardCast}`}>
                       <span className={styles.fieldLabel}>
                         <strong>♫ Lineup</strong>
                         <small>Separado por comas. Alimenta poster, landing y brief del diseñador.</small>
                       </span>
-                      <input name="lineup" value={draft.lineup.join(", ")} onChange={(event) => updateDraft("lineup", splitCommaList(event.target.value))} />
+                      <input
+                        name="lineup"
+                        value={draft.lineup.join(", ")}
+                        placeholder="Ej: La Sonora Pixel, DJ Nopal, invitado sorpresa"
+                        onChange={(event) => updateDraft("lineup", splitCommaList(event.target.value))}
+                      />
+                    </label>
+                  </div>
+                </details>
+
+                <details className={storySectionClassName} open={openSections.story}>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("story"); }}>
+                    <span className={styles.summaryLabel}>
+                      <span className={styles.summaryIcon} aria-hidden="true">📣</span>
+                      <span>La historia</span>
+                    </span>
+                  </summary>
+                  <div className={styles.formGrid}>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard}`}>
+                      <span className={styles.fieldLabelRow}>
+                        <span className={styles.fieldLabel}>
+                          <strong>≈ Resumen corto</strong>
+                          <small>Hook rápido para listings, previews y lectura inmediata.</small>
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.assistButton}
+                          onClick={() => void suggestFieldCopy("summary")}
+                          disabled={copyAssistLoadingField === "summary"}
+                        >
+                          {copyAssistLoadingField === "summary" ? <span className={styles.assistSpinner} aria-hidden="true" /> : "✦"}
+                          <span>Sugerir</span>
+                        </button>
+                      </span>
+                      <input
+                        name="summary"
+                        value={draft.summary}
+                        placeholder="Ej: Una noche de cumbia digital en la azotea del Foro"
+                        onChange={(event) => updateDraft("summary", event.target.value)}
+                      />
+                    </label>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardEditorial}`}>
+                      <span className={styles.fieldLabelRow}>
+                        <span className={styles.fieldLabel}>
+                          <strong>¶ Descripción pública</strong>
+                          <small>Contexto editorial para sitio, share cards y brief creativo.</small>
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.assistButton}
+                          onClick={() => void suggestFieldCopy("description")}
+                          disabled={copyAssistLoadingField === "description"}
+                        >
+                          {copyAssistLoadingField === "description" ? <span className={styles.assistSpinner} aria-hidden="true" /> : "✦"}
+                          <span>Sugerir</span>
+                        </button>
+                      </span>
+                      <textarea
+                        name="description"
+                        rows={5}
+                        value={draft.description}
+                        placeholder="Ej: Un drop de boletos mobile-first con seleccionado en vivo..."
+                        onChange={(event) => updateDraft("description", event.target.value)}
+                      />
                     </label>
                     <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardMood}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>♬ Géneros</strong>
-                        <small>Separado por comas. Ayuda a inferir mood, paleta y dirección visual.</small>
-                      </span>
-                      <input name="genre" value={draft.genre.join(", ")} onChange={(event) => updateDraft("genre", splitCommaList(event.target.value))} />
-                    </label>
-                  </div>
-                </details>
-
-                <details className={styles.formSection}>
-                  <summary>
-                    <span className={styles.summaryLabel}>
-                      <span className={styles.summaryIcon} aria-hidden="true">◷</span>
-                      <span>Horario y operación</span>
-                    </span>
-                  </summary>
-                  <div className={styles.formGrid}>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◷ Inicio</strong>
-                        <small>Hora oficial de arranque visible en listing, poster y landing.</small>
-                      </span>
-                      <input type="datetime-local" name="startsAt" value={toDateTimeLocalValue(draft.startsAt)} onChange={(event) => updateDraft("startsAt", new Date(event.target.value).toISOString())} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◴ Fin</strong>
-                        <small>Cierre programado del evento para operación y comunicación.</small>
-                      </span>
-                      <input type="datetime-local" name="endsAt" value={toDateTimeLocalValue(draft.endsAt)} onChange={(event) => updateDraft("endsAt", new Date(event.target.value).toISOString())} />
-                    </label>
-                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote}`}>
-                      <strong>Doors</strong>
-                      <small>Sepáralo como momento operativo: define desde cuándo puede entrar la gente, aunque el show empiece después.</small>
-                    </div>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardDoors}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>⟐ Doors</strong>
-                        <small>Apertura de puertas. Úsalo para acceso, filas y timing de consumo.</small>
-                      </span>
-                      <input type="datetime-local" name="doorTime" value={toDateTimeLocalValue(draft.doorTime)} onChange={(event) => updateDraft("doorTime", new Date(event.target.value).toISOString())} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardOps}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◌ Soundcheck</strong>
-                        <small>Referencia interna para producción, staff y coordinación del venue.</small>
-                      </span>
-                      <input type="datetime-local" name="soundcheckTime" value={toDateTimeLocalValue(draft.soundcheckTime)} onChange={(event) => updateDraft("soundcheckTime", new Date(event.target.value).toISOString())} />
-                    </label>
-                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote} ${styles.inlineSectionNoteOps}`}>
-                      <strong>Momentos operativos extra</strong>
-                      <small>Agrega checkpoints propios del venue como recepción, acceso staff, briefing o cualquier momento importante previo al show.</small>
-                    </div>
-                    <div className={`${styles.fullWidth} ${styles.operationalMomentsPanel}`}>
-                      <div className={styles.operationalMomentsHeader}>
-                        <div className={styles.operationalMomentsCopy}>
-                          <strong>Timeline custom del evento</strong>
-                          <small>Estos momentos viven junto a doors y soundcheck, y se guardan como parte de la operación del evento.</small>
-                        </div>
-                        <button type="button" className={styles.operationalMomentAddButton} onClick={addOperationalMoment}>
-                          <span aria-hidden="true">＋</span>
-                          <strong>Agregar momento</strong>
+                      <span className={styles.fieldLabelRow}>
+                        <span className={styles.fieldLabel}>
+                          <strong>♬ Géneros</strong>
+                          <small>Tags que ayudan a inferir mood, paleta y dirección visual.</small>
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.assistButton}
+                          onClick={() => void suggestFieldCopy("genre")}
+                          disabled={copyAssistLoadingField === "genre"}
+                        >
+                          {copyAssistLoadingField === "genre" ? <span className={styles.assistSpinner} aria-hidden="true" /> : "✦"}
+                          <span>Sugerir</span>
                         </button>
-                      </div>
-
-                      {(draft.operationalMoments ?? []).length ? (
-                        <div className={styles.operationalMomentList}>
-                          {(draft.operationalMoments ?? []).map((moment, index) => (
-                            <div key={moment.id} className={styles.operationalMomentRow}>
-                              <label className={`${styles.fieldCard} ${styles.fieldCardOps} ${styles.operationalMomentLabelCard}`}>
-                                <span className={styles.fieldLabel}>
-                                  <strong>✦ Momento {index + 1}</strong>
-                                  <small>Nómbralo como lo usa tu equipo: recepción, hospitality, briefing, call de staff, etc.</small>
-                                </span>
-                                <input
-                                  value={moment.label}
-                                  placeholder="Recepción"
-                                  onChange={(event) => updateOperationalMoment(moment.id, "label", event.target.value)}
-                                />
-                              </label>
-                              <label className={`${styles.fieldCard} ${styles.fieldCardMeta} ${styles.operationalMomentTimeCard}`}>
-                                <span className={styles.fieldLabel}>
-                                  <strong>◷ Hora</strong>
-                                  <small>Momento exacto en el que sucede este checkpoint operativo.</small>
-                                </span>
-                                <input
-                                  type="datetime-local"
-                                  value={toDateTimeLocalValue(moment.time)}
-                                  onChange={(event) =>
-                                    updateOperationalMoment(moment.id, "time", new Date(event.target.value).toISOString())
-                                  }
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                className={styles.operationalMomentRemoveButton}
-                                onClick={() => removeOperationalMoment(moment.id)}
-                                aria-label={`Borrar ${moment.label || `momento ${index + 1}`}`}
-                              >
-                                <span aria-hidden="true">✕</span>
-                                <strong>Borrar</strong>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className={styles.operationalMomentEmpty}>
-                          <strong>Aún no hay momentos custom</strong>
-                          <small>Si tu operación necesita más que doors y soundcheck, crea aquí los momentos extra con un clic.</small>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </details>
-
-                <details className={`${styles.formSection} ${styles.revenueSection}`}>
-                  <summary>
-                    <span className={styles.summaryLabel}>
-                      <span className={styles.summaryIcon} aria-hidden="true">¤</span>
-                      <span>Ticketing y publicación</span>
-                    </span>
-                  </summary>
-                  <div className={styles.sectionHintRibbon}>
-                    <article className={styles.infoChip}>
-                      <span aria-hidden="true">$</span>
-                      <strong>Monetización</strong>
-                    </article>
-                    <article className={styles.infoChip}>
-                      <span aria-hidden="true">◫</span>
-                      <strong>Aforo</strong>
-                    </article>
-                    <article className={styles.infoChip}>
-                      <span aria-hidden="true">◎</span>
-                      <strong>Estado público</strong>
-                    </article>
-                  </div>
-                  <div className={styles.formGrid}>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardMoneyHero}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◍ Precio base</strong>
-                        <small>Precio principal visible al comprador y base de cálculo para ingresos.</small>
                       </span>
-                      <input type="number" name="ticketPriceMXN" value={draft.ticketPriceMXN} onChange={(event) => updateDraft("ticketPriceMXN", Number(event.target.value))} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardMoney}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>＋ Fee consumidor</strong>
-                        <small>Cargo adicional para el buyer. Úsalo para separar precio y fee con claridad.</small>
-                      </span>
-                      <input type="number" name="ticketFeeMXN" value={draft.ticketFeeMXN} onChange={(event) => updateDraft("ticketFeeMXN", Number(event.target.value))} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardFinanceAccent}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>↗ % payout artista</strong>
-                        <small>Porcentaje del ingreso destinado al artista o proyecto según tu operación.</small>
-                      </span>
-                      <input type="number" min={0} max={1} step={0.01} name="artistPayoutRate" value={draft.artistPayoutRate} onChange={(event) => updateDraft("artistPayoutRate", Number(event.target.value))} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◫ Capacidad</strong>
-                        <small>Máximo de asistentes disponibles para venta y operación del venue.</small>
-                      </span>
-                      <input type="number" name="capacity" value={draft.capacity} onChange={(event) => updateDraft("capacity", Number(event.target.value))} />
-                    </label>
-                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
-                      <span className={styles.fieldLabel}>
-                        <strong>◉ Vendidos</strong>
-                        <small>Boletos ya colocados. Te ayuda a leer avance comercial y urgencia.</small>
-                      </span>
-                      <input type="number" name="soldCount" value={draft.soldCount} onChange={(event) => updateDraft("soldCount", Number(event.target.value))} />
-                    </label>
-                    <label className={styles.publishToggle}>
-                      <input type="checkbox" name="isPublished" checked={draft.isPublished} onChange={(event) => updateDraft("isPublished", event.target.checked)} />
-                      <span className={styles.publishToggleIcon} aria-hidden="true">◎</span>
-                      <span className={styles.publishToggleCopy}>
-                        <strong>Publicar landing del evento</strong>
-                        <small>Activa la versión pública del evento para que ya pueda circular y vender boletos.</small>
-                      </span>
+                      <input
+                        name="genre"
+                        value={draft.genre.join(", ")}
+                        placeholder="Ej: Cumbia digital, Tropical Jazz, Live Brass"
+                        onChange={(event) => updateDraft("genre", splitCommaList(event.target.value))}
+                      />
                     </label>
                   </div>
                 </details>
 
                 <details
-                  className={`${styles.formSection} ${styles.designSection} ${
-                    designSourceMode === "ai" ? styles.designSectionAiMode : styles.designSectionLocalMode
-                  }`}
-                  open
+                  ref={visualSectionRef}
+                  className={visualSectionClassName}
+                  open={openSections.visual}
                 >
-                  <summary>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("visual"); }}>
                     <span className={styles.summaryLabel}>
                       <span className={styles.summaryIcon} aria-hidden="true">✦</span>
                       <span>Dirección visual</span>
@@ -1616,7 +1901,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                         <div className={styles.generatedBody}>
                           <div className={styles.selectionHint}>
                             <strong>Ruta local</strong>
-                            <p>Selecciona una dirección del sistema interno. Esto cambia el tono, el renderer y la composición base del poster local.</p>
+                            <p>Selecciona una dirección editorial. El motor elegido usará esta ruta para construir un poster nuevo a partir del contenido del evento.</p>
                           </div>
                           <div className={styles.styleSelectorGrid}>
                             {posterIdeaPresets.map((preset) => {
@@ -1639,29 +1924,68 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                               );
                             })}
                           </div>
-                          <p>La ruta local genera una sola dirección consistente desde la idea elegida. Aquí solo decides si el poster usa sistema gráfico puro o si incorpora foto del venue.</p>
-                          <label className={styles.photoToggleCard}>
-                            <input
-                              type="checkbox"
-                              checked={(draft.posterAssetMode ?? "graphic-only") === "uploaded-hero"}
-                              onChange={(event) => updateLocalPhotoUsage(event.target.checked)}
-                            />
-                            <div>
-                              <strong>Incluir foto en el poster local</strong>
-                              <p>
-                                Si activas esta opción, el sistema usará la imagen subida por el usuario y la recortará/normalizará para integrarla al layout del poster.
-                              </p>
+                          <div ref={providerSectionRef} className={styles.providerSection}>
+                            <div className={styles.selectionHint}>
+                              <strong>Motor de generación</strong>
+                              <p>Elige desde dónde quieres producir el poster. Los dos modos de Pollinations funcionan sin registro; Hugging Face y Together requieren su propia key y se guardan solo en este navegador.</p>
                             </div>
-                          </label>
-                          {(draft.posterAssetMode ?? "graphic-only") === "uploaded-hero" ? (
-                            <label className={styles.fullWidth}>
-                              <span>Foto propia para el poster local</span>
-                              <input type="file" name="heroImageFile" accept="image/*" onChange={handleHeroFileChange} />
-                              <small className={styles.inlineHint}>
-                                La imagen se ajusta y recorta automáticamente para la composición local del poster.
-                              </small>
-                            </label>
-                          ) : null}
+                            <div className={styles.styleSelectorGrid}>
+                              {providerOptions.map((providerOption) => {
+                                const active = localPosterProvider === providerOption.id;
+                                const connected =
+                                  providerOption.id === "pollinations" || providerOption.id === "pollinations-alt"
+                                    ? true
+                                    : Boolean(providerKeys[providerOption.id]);
+
+                                return (
+                                  <button
+                                    key={providerOption.id}
+                                    type="button"
+                                    className={active ? styles.styleCardActive : styles.styleCard}
+                                    onClick={() => selectGenerationProvider(providerOption.id)}
+                                    aria-pressed={active}
+                                  >
+                                    <div>
+                                      <span className={styles.toggleState}>{active ? "ACTIVO" : "DISPONIBLE"}</span>
+                                      <strong>{providerOption.title}</strong>
+                                      <p>{providerOption.subtitle}</p>
+                                      <small>{providerOption.detail}</small>
+                                      {connected ? <span className={styles.connectedBadge}>Conectado ✓</span> : null}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {expandedProviderSetup ? (
+                              <div className={styles.providerSetupCard}>
+                                <label className={styles.fullWidth}>
+                                  <span>API key</span>
+                                  <input
+                                    value={providerKeyDrafts[expandedProviderSetup]}
+                                    placeholder={expandedProviderSetup === "huggingface" ? "hf_..." : "together_..."}
+                                    onChange={(event) =>
+                                      setProviderKeyDrafts((current) => ({
+                                        ...current,
+                                        [expandedProviderSetup]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                </label>
+                                <div className={styles.providerSetupActions}>
+                                  <a href={providerOptions.find((item) => item.id === expandedProviderSetup)?.setupHref} target="_blank" rel="noreferrer">
+                                    Obtener key
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className={styles.saveButton}
+                                    onClick={() => persistProviderKey(expandedProviderSetup)}
+                                  >
+                                    Guardar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       ) : (
                         <div className={styles.generatedBody}>
@@ -1745,14 +2069,69 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                         <button type="button" className={styles.previewLink} onClick={goToPreviousWizardStep}>
                           Atrás
                         </button>
-                        <button type="button" className={styles.saveButton} onClick={goToNextWizardStep} disabled={!canAdvanceFromStep1}>
+                        <button
+                          type="button"
+                          className={styles.saveButton}
+                          onClick={() => {
+                            if (designSourceMode === "local") {
+                              void triggerLocalPosterGeneration();
+                              return;
+                            }
+
+                            goToNextWizardStep();
+                          }}
+                          disabled={!canAdvanceFromStep1}
+                        >
                           Siguiente
                         </button>
                       </div>
                     </div>
                   ) : null}
 
-                  {designWizardStep === 2 ? (
+                  {designWizardStep === 2 && designSourceMode === "local" ? (
+                    <div className={styles.wizardSlide}>
+                      <div className={styles.sectionHeading}>
+                        <span>Pantalla 3</span>
+                        <strong>Revisa el poster generado y decide si lo publicas</strong>
+                        <small>La generación ya está corriendo o ya terminó. Aquí no editas formas: comparas, regeneras o cambias de motor si hace falta.</small>
+                      </div>
+                      <div className={styles.wizardOverview}>
+                        <article>
+                          <span>Motor</span>
+                          <strong>{generatedPosterProviderLabel}</strong>
+                        </article>
+                        <article>
+                          <span>Ruta</span>
+                          <strong>{selectedPreset.title}</strong>
+                        </article>
+                        <article>
+                          <span>Estado</span>
+                          <strong>
+                            {localPosterGeneration.status === "loading"
+                              ? "Generando..."
+                              : localPosterGeneration.status === "success"
+                                ? "Listo para revisar"
+                                : localPosterGeneration.status === "error"
+                                  ? "Necesita reintento"
+                                  : "Aún sin generar"}
+                          </strong>
+                        </article>
+                      </div>
+                      <div className={styles.generatedBody}>
+                        <p>El preview lateral ya muestra la versión desktop, tablet y mobile del poster generado. Desde ahí puedes regenerar, descargarlo o volver al paso anterior para cambiar el motor.</p>
+                      </div>
+                      <div className={styles.wizardActions}>
+                        <button type="button" className={styles.previewLink} onClick={goToPreviousWizardStep}>
+                          Atrás
+                        </button>
+                        <button type="button" className={styles.saveButton} onClick={jumpBackToProviderSelector}>
+                          Cambiar motor
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {designWizardStep === 2 && designSourceMode === "ai" ? (
                     <div className={styles.wizardSlide}>
                       <div className={styles.sectionHeading}>
                         <span>Pantalla 3</span>
@@ -1806,8 +2185,213 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                   ) : null}
                 </details>
 
-                <details className={styles.formSection}>
-                  <summary>
+                <details className={operationsSectionClassName} open={openSections.operations}>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("operations"); }}>
+                    <span className={styles.summaryLabel}>
+                      <span className={styles.summaryIcon} aria-hidden="true">⚙️</span>
+                      <span>Operación</span>
+                    </span>
+                  </summary>
+                  <div className={styles.formGrid}>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◴ Fin</strong>
+                        <small>Cierre programado del evento para operación y comunicación.</small>
+                      </span>
+                      <input
+                        type="datetime-local"
+                        name="endsAt"
+                        value={toDateTimeLocalValue(draft.endsAt)}
+                        onChange={(event) => updateDraft("endsAt", new Date(event.target.value).toISOString())}
+                      />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◷ Timezone</strong>
+                        <small>Controla fechas, horarios y consistencia de publicación.</small>
+                      </span>
+                      <input
+                        name="timezone"
+                        value={draft.timezone}
+                        placeholder="Ej: America/Mexico_City"
+                        onChange={(event) => updateDraft("timezone", event.target.value)}
+                      />
+                    </label>
+                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote}`}>
+                      <strong>Doors y soundcheck</strong>
+                      <small>Separa claramente tiempos de acceso y operación interna para que el staff y el poster no se crucen.</small>
+                    </div>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardDoors}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>⟐ Doors</strong>
+                        <small>Apertura de puertas. Úsalo para acceso, filas y timing de consumo.</small>
+                      </span>
+                      <input
+                        type="datetime-local"
+                        name="doorTime"
+                        value={toDateTimeLocalValue(draft.doorTime)}
+                        onChange={(event) => updateDraft("doorTime", new Date(event.target.value).toISOString())}
+                      />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardOps}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◌ Soundcheck</strong>
+                        <small>Referencia interna para producción, staff y coordinación del venue.</small>
+                      </span>
+                      <input
+                        type="datetime-local"
+                        name="soundcheckTime"
+                        value={toDateTimeLocalValue(draft.soundcheckTime)}
+                        onChange={(event) => updateDraft("soundcheckTime", new Date(event.target.value).toISOString())}
+                      />
+                    </label>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardVenue}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>⌖ Dirección</strong>
+                        <small>Ubicación completa para mapa, CTA y texto obligatorio.</small>
+                      </span>
+                      <input
+                        name="venueAddress"
+                        value={draft.venueAddress}
+                        placeholder="Ej: Av. Chapultepec Sur 180, Americana, Guadalajara"
+                        onChange={(event) => updateDraft("venueAddress", event.target.value)}
+                      />
+                    </label>
+                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote} ${styles.inlineSectionNoteOps}`}>
+                      <strong>Momentos operativos extra</strong>
+                      <small>Agrega checkpoints propios del venue como recepción, acceso staff, briefing o cualquier momento importante previo al show.</small>
+                    </div>
+                    <div className={`${styles.fullWidth} ${styles.operationalMomentsPanel}`}>
+                      <div className={styles.operationalMomentsHeader}>
+                        <div className={styles.operationalMomentsCopy}>
+                          <strong>Timeline custom del evento</strong>
+                          <small>Estos momentos viven junto a doors y soundcheck, y se guardan como parte de la operación del evento.</small>
+                        </div>
+                        <button type="button" className={styles.operationalMomentAddButton} onClick={addOperationalMoment}>
+                          <span aria-hidden="true">＋</span>
+                          <strong>Agregar momento</strong>
+                        </button>
+                      </div>
+                      {(draft.operationalMoments ?? []).length ? (
+                        <div className={styles.operationalMomentList}>
+                          {(draft.operationalMoments ?? []).map((moment, index) => (
+                            <div key={moment.id} className={styles.operationalMomentRow}>
+                              <label className={`${styles.fieldCard} ${styles.fieldCardOps} ${styles.operationalMomentLabelCard}`}>
+                                <span className={styles.fieldLabel}>
+                                  <strong>✦ Momento {index + 1}</strong>
+                                  <small>Nómbralo como lo usa tu equipo: recepción, hospitality, briefing, call de staff, etc.</small>
+                                </span>
+                                <input
+                                  value={moment.label}
+                                  placeholder="Recepción"
+                                  onChange={(event) => updateOperationalMoment(moment.id, "label", event.target.value)}
+                                />
+                              </label>
+                              <label className={`${styles.fieldCard} ${styles.fieldCardMeta} ${styles.operationalMomentTimeCard}`}>
+                                <span className={styles.fieldLabel}>
+                                  <strong>◷ Hora</strong>
+                                  <small>Momento exacto en el que sucede este checkpoint operativo.</small>
+                                </span>
+                                <input
+                                  type="datetime-local"
+                                  value={toDateTimeLocalValue(moment.time)}
+                                  onChange={(event) =>
+                                    updateOperationalMoment(moment.id, "time", new Date(event.target.value).toISOString())
+                                  }
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className={styles.operationalMomentRemoveButton}
+                                onClick={() => removeOperationalMoment(moment.id)}
+                                aria-label={`Borrar ${moment.label || `momento ${index + 1}`}`}
+                              >
+                                <span aria-hidden="true">✕</span>
+                                <strong>Borrar</strong>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={styles.operationalMomentEmpty}>
+                          <strong>Aún no hay momentos custom</strong>
+                          <small>Si tu operación necesita más que doors y soundcheck, crea aquí los momentos extra con un clic.</small>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </details>
+
+                <details className={ticketingSectionClassName} open={openSections.ticketing}>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("ticketing"); }}>
+                    <span className={styles.summaryLabel}>
+                      <span className={styles.summaryIcon} aria-hidden="true">🎟️</span>
+                      <span>Ticketing y publicación</span>
+                    </span>
+                  </summary>
+                  <div className={styles.sectionHintRibbon}>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◍</span>
+                      <strong>Monetización</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◫</span>
+                      <strong>Aforo</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◎</span>
+                      <strong>Estado público</strong>
+                    </article>
+                  </div>
+                  <div className={styles.formGrid}>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMoneyHero}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◍ Precio base</strong>
+                        <small>Precio principal visible al comprador y base de cálculo para ingresos.</small>
+                      </span>
+                      <input type="number" name="ticketPriceMXN" value={draft.ticketPriceMXN} onChange={(event) => updateDraft("ticketPriceMXN", Number(event.target.value))} />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMoney}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>＋ Fee consumidor</strong>
+                        <small>Cargo adicional para el buyer. Úsalo para separar precio y fee con claridad.</small>
+                      </span>
+                      <input type="number" name="ticketFeeMXN" value={draft.ticketFeeMXN} onChange={(event) => updateDraft("ticketFeeMXN", Number(event.target.value))} />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardFinanceAccent}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>↗ % payout artista</strong>
+                        <small>Porcentaje del ingreso destinado al artista o proyecto según tu operación.</small>
+                      </span>
+                      <input type="number" min={0} max={1} step={0.01} name="artistPayoutRate" value={draft.artistPayoutRate} onChange={(event) => updateDraft("artistPayoutRate", Number(event.target.value))} />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◫ Capacidad</strong>
+                        <small>Máximo de asistentes disponibles para venta y operación del venue.</small>
+                      </span>
+                      <input type="number" name="capacity" value={draft.capacity} onChange={(event) => updateDraft("capacity", Number(event.target.value))} />
+                    </label>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◉ Vendidos</strong>
+                        <small>Boletos ya colocados. Te ayuda a leer avance comercial y urgencia.</small>
+                      </span>
+                      <input type="number" name="soldCount" value={draft.soldCount} onChange={(event) => updateDraft("soldCount", Number(event.target.value))} />
+                    </label>
+                    <label className={styles.publishToggle}>
+                      <input type="checkbox" name="isPublished" checked={draft.isPublished} onChange={(event) => updateDraft("isPublished", event.target.checked)} />
+                      <span className={styles.publishToggleIcon} aria-hidden="true">◎</span>
+                      <span className={styles.publishToggleCopy}>
+                        <strong>Publicar landing del evento</strong>
+                        <small>Activa la versión pública del evento para que ya pueda circular y vender boletos.</small>
+                      </span>
+                    </label>
+                  </div>
+                </details>
+
+                <details className={assetsSectionClassName} open={openSections.assets}>
+                  <summary onClick={(event) => { event.preventDefault(); toggleSection("assets"); }}>
                     <span className={styles.summaryLabel}>
                       <span className={styles.summaryIcon} aria-hidden="true">⬒</span>
                       <span>Assets y handoff</span>
@@ -1853,6 +2437,10 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                       <span>Asset mode</span>
                       <strong>{assetModeOptions.find((option) => option.id === (draft.posterAssetMode ?? "graphic-only"))?.label}</strong>
                     </article>
+                    <article>
+                      <span>Poster source</span>
+                      <strong>{effectivePosterReferenceUrls[0] ? effectivePosterReferenceUrls[0].slice(0, 48) : "Sin poster generado"}</strong>
+                    </article>
                   </div>
                   <div className={styles.motifGrid}>
                     {generatedDesign.handoff.developerNotes.map((note) => (
@@ -1896,13 +2484,21 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                       Ver sitio publicado
                     </Link>
                   ) : null}
-                  <button type="submit" className={styles.saveButton} disabled={isSaving}>
-                    {isSaving ? "Guardando..." : draft.isPublished ? "Guardar y publicar" : "Guardar draft"}
-                  </button>
                 </div>
                 {draft.id && deleteState.ok === false && deleteState.message ? (
                   <small className={styles.deleteHint}>{deleteState.message}</small>
                 ) : null}
+              </div>
+              <div className={styles.floatingActionBar}>
+                <button type="button" className={styles.floatingBackButton} onClick={goBackToEvents}>
+                  ← Volver a eventos
+                </button>
+                <button type="submit" className={styles.floatingSaveButton} disabled={isSaving}>
+                  {isSaving ? "Guardando..." : "Guardar borrador"}
+                </button>
+                <button type="button" className={styles.floatingGenerateButton} onClick={handleGeneratePosterCta}>
+                  ✦ Generar poster →
+                </button>
               </div>
             </form>
             {draft.id ? (
@@ -2032,38 +2628,88 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                         ) : null}
                       </div>
                     )
+                  ) : designWizardStep < 2 && localPosterGeneration.status === "idle" ? (
+                    <div className={styles.previewPlaceholder}>
+                      <strong>El poster local se genera al pasar al review.</strong>
+                      <p>Elige la ruta y el motor. En cuanto pulses “Siguiente”, la generación arranca y este panel cambia a skeleton mientras llegan las imágenes.</p>
+                    </div>
                   ) : (
-                    <div className={styles.viewportPreviewGrid}>
-                      {[
-                        { label: "Desktop", width: "1120px", height: "720px", scale: 0.24 },
-                        { label: "Tablet", width: "820px", height: "1024px", scale: 0.22 },
-                        { label: "Mobile", width: "420px", height: "860px", scale: 0.32 },
-                      ].map((viewport) => (
-                        <article key={viewport.label} className={styles.viewportCard}>
-                          <div className={styles.viewportCardHeader}>
-                            <span>{viewport.label}</span>
-                            <strong>
-                              {viewport.width.replace("px", "")} × {viewport.height.replace("px", "")}
-                            </strong>
-                          </div>
-                          <div
-                            className={styles.viewportStage}
-                            style={
-                              {
-                                "--preview-width": viewport.width,
-                                "--preview-height": viewport.height,
-                                "--preview-scale": String(viewport.scale),
-                              } as CSSProperties
-                            }
-                          >
-                            <div className={styles.viewportFrame}>
-                              <div className={styles.livePosterCanvasViewport}>
-                                {renderPosterPage(previewDraft, generatedDesign, previewRelatedEvents)}
+                    <div className={styles.localPosterReviewStage}>
+                      <div className={styles.localPosterReviewHeader}>
+                        <span className={styles.previewProviderChip}>via {generatedPosterProviderLabel}</span>
+                      </div>
+                      <div className={styles.viewportPreviewGrid}>
+                        {[
+                          { label: "Desktop", width: "1200px", height: "760px", scale: 0.24, mode: "landscape" },
+                          { label: "Tablet", width: "1024px", height: "768px", scale: 0.26, mode: "tablet" },
+                          { label: "Mobile", width: "390px", height: "844px", scale: 0.34, mode: "mobile" },
+                        ].map((viewport) => (
+                          <article key={viewport.label} className={styles.viewportCard}>
+                            <div className={styles.viewportCardHeader}>
+                              <span>{viewport.label}</span>
+                              <strong>
+                                {viewport.width.replace("px", "")} × {viewport.height.replace("px", "")}
+                              </strong>
+                            </div>
+                            <div
+                              className={styles.generatedViewportStage}
+                              style={
+                                {
+                                  "--preview-width": viewport.width,
+                                  "--preview-height": viewport.height,
+                                  "--preview-scale": String(viewport.scale),
+                                } as CSSProperties
+                              }
+                            >
+                              <div className={`${styles.generatedViewportFrame} ${styles[`generatedViewportFrame${viewport.mode === "mobile" ? "Mobile" : viewport.mode === "tablet" ? "Tablet" : "Desktop"}`]}`}>
+                                {localPosterGeneration.status === "loading" ||
+                                (localPosterGeneration.status === "success" &&
+                                  localPosterGeneration.imageUrl &&
+                                  loadedPosterUrl !== localPosterGeneration.imageUrl) ? (
+                                  <div className={styles.posterSkeleton} />
+                                ) : null}
+                                {localPosterGeneration.status === "error" ? (
+                                  <div className={styles.posterErrorState}>
+                                    <strong>No se pudo generar. Intenta de nuevo.</strong>
+                                    <button type="button" className={styles.previewLink} onClick={regenerateLocalPoster}>
+                                      Reintentar
+                                    </button>
+                                  </div>
+                                ) : null}
+                                {localPosterGeneration.status === "success" && localPosterGeneration.imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={localPosterGeneration.imageUrl}
+                                    alt={`Poster generado para ${draft.title}`}
+                                    className={
+                                      loadedPosterUrl === localPosterGeneration.imageUrl
+                                        ? styles.generatedPosterImageReady
+                                        : styles.generatedPosterImage
+                                    }
+                                    onLoad={() => setLoadedPosterUrl(localPosterGeneration.imageUrl ?? "")}
+                                  />
+                                ) : null}
                               </div>
                             </div>
-                          </div>
-                        </article>
-                      ))}
+                          </article>
+                        ))}
+                      </div>
+                      <div className={styles.localPosterActions}>
+                        <button type="button" className={styles.previewLink} onClick={regenerateLocalPoster} disabled={localPosterGeneration.status === "loading"}>
+                          {localPosterGeneration.status === "loading" ? "Regenerando..." : "Regenerar"}
+                        </button>
+                        <button type="button" className={styles.previewLink} onClick={jumpBackToProviderSelector}>
+                          Cambiar motor
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.saveButton}
+                          onClick={() => void downloadGeneratedPoster()}
+                          disabled={!localPosterGeneration.imageUrl}
+                        >
+                          Descargar poster
+                        </button>
+                      </div>
                     </div>
                   )
                 ) : null}
@@ -2143,6 +2789,113 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
           </div>
         </section>
       </section>
+      {quickStartOpen ? (
+        <div className={styles.quickStartOverlay}>
+          <div className={styles.quickStartBackdrop} />
+          <section className={styles.quickStartCard}>
+            <div className={styles.quickStartHeader}>
+              <div>
+                <span>Paso {quickStartStep + 1}/3</span>
+                <strong>{quickStartStep + 1} de 3</strong>
+              </div>
+              <button type="button" className={styles.previewLink} onClick={dismissQuickStartToFullEditor}>
+                Editar todos los detalles
+              </button>
+            </div>
+            <div className={styles.quickStartProgressTrack}>
+              <div
+                className={styles.quickStartProgressFill}
+                style={{ width: `${((quickStartStep + 1) / 3) * 100}%` }}
+              />
+            </div>
+
+            {quickStartStep === 0 ? (
+              <div className={styles.quickStartBody}>
+                <h2>¿Cómo se llama el evento?</h2>
+                <input
+                  autoFocus
+                  className={styles.quickStartInput}
+                  value={quickStartTitle}
+                  placeholder="Ej: Midnight Cumbia Systems"
+                  onChange={(event) => setQuickStartTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      advanceQuickStart();
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
+
+            {quickStartStep === 1 ? (
+              <div className={styles.quickStartBody}>
+                <h2>¿Cuándo y dónde?</h2>
+                <div className={styles.quickStartSplit}>
+                  <input
+                    autoFocus
+                    className={styles.quickStartInput}
+                    type="datetime-local"
+                    value={quickStartStartsAt}
+                    onChange={(event) => setQuickStartStartsAt(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        advanceQuickStart();
+                      }
+                    }}
+                  />
+                  <input
+                    className={styles.quickStartInput}
+                    value={quickStartVenue}
+                    placeholder="Ej: Foro GDL"
+                    onChange={(event) => setQuickStartVenue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        advanceQuickStart();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {quickStartStep === 2 ? (
+              <div className={styles.quickStartBody}>
+                <h2>¿Quién toca?</h2>
+                <input
+                  autoFocus
+                  className={styles.quickStartInput}
+                  value={quickStartLineup}
+                  placeholder="Ej: La Sonora Pixel, DJ Nopal, Brass After Dark"
+                  onChange={(event) => setQuickStartLineup(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      advanceQuickStart();
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
+
+            <div className={styles.quickStartFooter}>
+              <button
+                type="button"
+                className={styles.previewLink}
+                onClick={() => setQuickStartStep((current) => (current === 0 ? current : ((current - 1) as 0 | 1 | 2)))}
+                disabled={quickStartStep === 0}
+              >
+                Atrás
+              </button>
+              <button type="button" className={styles.saveButton} onClick={advanceQuickStart}>
+                {quickStartStep === 2 ? "Empezar dirección visual →" : "Siguiente →"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -164,7 +164,7 @@
       "mediumScrim": 56,
       "borderRadius": 16,
       "borderWidth": 1,
-      "blurStrength": 9
+      "blurStrength": 0
     },
     "light": {
       "accent": "#0f9d7b",

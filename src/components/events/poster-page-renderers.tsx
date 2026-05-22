@@ -18,6 +18,10 @@ const defaultPosterVisibleFields = [
   "related",
 ] as const;
 
+function getPublishedPosterAssetUrl(event: EventData) {
+  return event.posterReferenceUrls?.[0] ?? "";
+}
+
 function formatTime(date: string) {
   return new Intl.DateTimeFormat("es-MX", {
     hour: "2-digit",
@@ -41,6 +45,52 @@ function buildTicketPriceLabel(price: number, fee: number) {
 
 function shouldRenderPhoto(event: EventData, posterDesign: EventPosterDesign) {
   return posterDesign.handoff.usesPhotography && Boolean(event.heroImage);
+}
+
+function GeneratedImagePoster({
+  event,
+  relatedEvents,
+}: {
+  event: EventData;
+  relatedEvents: RelatedEvent[];
+}) {
+  const posterAssetUrl = getPublishedPosterAssetUrl(event);
+
+  if (!posterAssetUrl) {
+    return null;
+  }
+
+  return (
+    <article className={`${styles.posterSite} ${styles.generatedImagePosterSite}`}>
+      <div className={styles.generatedImageStage}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={posterAssetUrl} alt={`Poster oficial de ${event.title}`} className={styles.generatedImagePoster} />
+      </div>
+      <div className={styles.generatedImageDock}>
+        <div className={styles.generatedImageMeta}>
+          <span>{event.venueName}</span>
+          <strong>{event.title}</strong>
+          <small>
+            {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.startsAt))}
+          </small>
+        </div>
+        <div className={styles.generatedImageActions}>
+          <a className={styles.buyButton} href={`/checkout?event=${event.slug}`}>
+            COMPRAR BOLETO
+          </a>
+          {relatedEvents.length > 0 ? (
+            <div className={styles.relatedLinks}>
+              {relatedEvents.map((item) => (
+                <a key={item.slug} href={`/events/${item.slug}`}>
+                  {item.title}
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function isVisible(event: EventData, field: (typeof defaultPosterVisibleFields)[number]) {
@@ -627,6 +677,10 @@ export function renderPosterPage(
   posterDesign: EventPosterDesign,
   relatedEvents: RelatedEvent[],
 ) {
+  if (getPublishedPosterAssetUrl(event)) {
+    return <GeneratedImagePoster event={event} relatedEvents={relatedEvents} />;
+  }
+
   switch (posterDesign.rendererId) {
     case "festival-ticket-site":
       return <FestivalTicketPoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;

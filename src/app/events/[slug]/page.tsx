@@ -32,13 +32,13 @@ export async function generateMetadata({ params }: EventPageProps): Promise<Meta
       type: "website",
       title: `${event.title} | ${event.venueName}`,
       description: event.description,
-      images: [event.heroImage],
+      images: [event.posterReferenceUrls?.[0] || event.heroImage],
     },
     twitter: {
       card: "summary_large_image",
       title: `${event.title} | ${event.venueName}`,
       description: event.summary,
-      images: [event.heroImage],
+      images: [event.posterReferenceUrls?.[0] || event.heroImage],
     },
     alternates: {
       canonical: `/events/${event.slug}`,
@@ -95,7 +95,7 @@ export default async function EventLandingPage({ params }: EventPageProps) {
     endDate: event.endsAt,
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
     eventStatus: "https://schema.org/EventScheduled",
-    image: [event.heroImage],
+    image: [event.posterReferenceUrls?.[0] || event.heroImage],
     location: {
       "@type": "MusicVenue",
       name: event.venueName,
