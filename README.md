@@ -55,3 +55,4 @@ Configure these environment variables in Vercel before deploying:
 - `BLOB_READ_WRITE_TOKEN`
 # cv-builder
 # ticketmate
+# ticketmate
