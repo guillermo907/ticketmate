@@ -97,6 +97,18 @@ function normalizeEventRecord(event: Partial<VenueEventRecord>): VenueEventRecor
     posterAssetMode: event.posterAssetMode ?? "graphic-only",
     doorTime: event.doorTime ?? event.startsAt ?? new Date().toISOString(),
     soundcheckTime: event.soundcheckTime ?? event.startsAt ?? new Date().toISOString(),
+    operationalMoments: Array.isArray(event.operationalMoments)
+      ? event.operationalMoments
+          .filter(
+            (moment): moment is VenueEventRecord["operationalMoments"][number] =>
+              Boolean(moment?.id && moment?.label && moment?.time),
+          )
+          .map((moment) => ({
+            id: moment.id,
+            label: moment.label.trim(),
+            time: moment.time,
+          }))
+      : [],
     ticketPriceMXN: event.ticketPriceMXN ?? 280,
     ticketFeeMXN: event.ticketFeeMXN ?? 15,
     artistPayoutRate: event.artistPayoutRate ?? 0.7,
@@ -211,6 +223,7 @@ export async function upsertEventRecord(
     posterAssetMode: incoming.posterAssetMode,
     doorTime: incoming.doorTime,
     soundcheckTime: incoming.soundcheckTime,
+    operationalMoments: incoming.operationalMoments,
     ticketPriceMXN: incoming.ticketPriceMXN,
     ticketFeeMXN: incoming.ticketFeeMXN,
     artistPayoutRate: incoming.artistPayoutRate,

@@ -426,7 +426,6 @@ export function normalizeThemePalette(
 }
 
 export function normalizeThemeForStorage(theme: SiteContent["theme"]): SiteContent["theme"] {
-  const normalized = normalizeSiteTheme(theme);
   const surface = theme.surface ?? {
     wallpaperVisibility: 30,
     surfaceVisibility: 30,
@@ -436,29 +435,37 @@ export function normalizeThemeForStorage(theme: SiteContent["theme"]): SiteConte
     borderWidth: 1,
     blurStrength: 10
   };
+  const clampStoredNumber = (value: unknown, fallback: number, min: number, max: number) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    return Math.max(min, Math.min(max, parsed));
+  };
 
   return {
-    accent: normalized.accent,
-    accentAlt: normalized.accentAlt,
-    background: normalized.background,
-    backgroundImage: normalized.backgroundImage,
-    contrast: normalized.contrast,
-    bannerStyle: normalized.bannerStyle ?? "editorial",
+    accent: normalizeHex(theme.accent, "#d9a441"),
+    accentAlt: normalizeHex(theme.accentAlt, "#46b7a9"),
+    background: normalizeHex(theme.background, darkFallback),
+    backgroundImage: theme.backgroundImage ?? "",
+    contrast: theme.contrast ?? "balanced",
+    bannerStyle: theme.bannerStyle ?? "editorial",
     surface: {
-      wallpaperVisibility: Math.max(0, Math.min(100, Number(surface.wallpaperVisibility) || 30)),
-      surfaceVisibility: Math.max(0, Math.min(100, Number(surface.surfaceVisibility) || 30)),
-      strongScrim: Math.max(0, Math.min(100, Number(surface.strongScrim) || 88)),
-      mediumScrim: Math.max(0, Math.min(100, Number(surface.mediumScrim) || 56)),
-      borderRadius: Math.max(0, Math.min(40, Number(surface.borderRadius) || 16)),
-      borderWidth: Math.max(0, Math.min(6, Number(surface.borderWidth) || 1)),
-      blurStrength: Math.max(0, Math.min(40, Number(surface.blurStrength) || 10))
+      wallpaperVisibility: clampStoredNumber(surface.wallpaperVisibility, 30, 0, 100),
+      surfaceVisibility: clampStoredNumber(surface.surfaceVisibility, 30, 0, 100),
+      strongScrim: clampStoredNumber(surface.strongScrim, 88, 0, 100),
+      mediumScrim: clampStoredNumber(surface.mediumScrim, 56, 0, 100),
+      borderRadius: clampStoredNumber(surface.borderRadius, 16, 0, 40),
+      borderWidth: clampStoredNumber(surface.borderWidth, 1, 0, 6),
+      blurStrength: clampStoredNumber(surface.blurStrength, 10, 0, 40)
     },
     light: {
-      accent: normalized.light.accent,
-      accentAlt: normalized.light.accentAlt,
-      background: normalized.light.background,
-      backgroundImage: normalized.light.backgroundImage,
-      contrast: normalized.light.contrast
+      accent: normalizeHex(theme.light?.accent, "#4ea003"),
+      accentAlt: normalizeHex(theme.light?.accentAlt, "#0ba32c"),
+      background: normalizeHex(theme.light?.background, lightFallback),
+      backgroundImage: theme.light?.backgroundImage ?? "",
+      contrast: theme.light?.contrast ?? "balanced"
     }
   };
 }

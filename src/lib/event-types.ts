@@ -31,6 +31,12 @@ export const posterVisibleFieldIds = [
 
 export type PosterVisibleFieldId = (typeof posterVisibleFieldIds)[number];
 
+export type EventOperationalMoment = {
+  id: string;
+  label: string;
+  time: string;
+};
+
 export type EventInviteStyleDefinition = {
   id: EventInviteStyleId;
   label: string;
@@ -144,6 +150,7 @@ export type VenueEventRecord = {
   posterAssetMode?: "graphic-only" | "uploaded-hero" | "banana-pro" | "pexels-editorial" | "mixed-collage";
   doorTime: string;
   soundcheckTime: string;
+  operationalMoments: EventOperationalMoment[];
   ticketPriceMXN: number;
   ticketFeeMXN: number;
   artistPayoutRate: number;

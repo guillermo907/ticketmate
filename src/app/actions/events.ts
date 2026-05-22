@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   posterVisibleFieldIds,
   type EventInviteStyleId,
+  type EventOperationalMoment,
   type EventVisualMotifId,
   type PosterVisibleFieldId,
   type VenueEventRecord,
@@ -46,6 +47,42 @@ function splitList(value: string) {
     .filter(Boolean);
 }
 
+function parseOperationalMoments(raw: string): EventOperationalMoment[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is EventOperationalMoment => {
+        if (!item || typeof item !== "object") {
+          return false;
+        }
+
+        const candidate = item as Record<string, unknown>;
+        return (
+          typeof candidate.id === "string" &&
+          typeof candidate.label === "string" &&
+          typeof candidate.time === "string"
+        );
+      })
+      .map((item) => ({
+        id: item.id.trim(),
+        label: item.label.trim(),
+        time: item.time.trim(),
+      }))
+      .filter((item) => item.id && item.label && item.time && !Number.isNaN(new Date(item.time).getTime()));
+  } catch {
+    return [];
+  }
+}
+
 async function saveEventHeroAsset(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const fileName = `event-hero-${randomUUID()}.${extension}`;
@@ -82,6 +119,7 @@ export async function saveEventAction(
     const endsAt = getString(formData, "endsAt");
     const doorTime = getString(formData, "doorTime");
     const soundcheckTime = getString(formData, "soundcheckTime");
+    const operationalMoments = parseOperationalMoments(getString(formData, "operationalMoments"));
     const venueName = getString(formData, "venueName");
     const venueAddress = getString(formData, "venueAddress");
 
@@ -146,6 +184,7 @@ export async function saveEventAction(
       posterAssetMode: (getString(formData, "posterAssetMode") || "graphic-only") as VenueEventRecord["posterAssetMode"],
       doorTime: doorTimeValue,
       soundcheckTime: soundcheckTimeValue,
+      operationalMoments,
       ticketPriceMXN: Math.max(0, getNumber(formData, "ticketPriceMXN", 280)),
       ticketFeeMXN: Math.max(0, getNumber(formData, "ticketFeeMXN", 15)),
       artistPayoutRate: Math.max(0, Math.min(1, getNumber(formData, "artistPayoutRate", 0.7))),

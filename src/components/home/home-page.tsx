@@ -2,7 +2,7 @@
 
 import type { SiteContent } from "@/lib/types";
 import { applyThemeVariables } from "@/lib/apply-theme-variables";
-import { normalizeSiteTheme } from "@/lib/theme-contrast";
+import { normalizeSiteTheme, themeCssVariables } from "@/lib/theme-contrast";
 import Link from "next/link";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { ThemeModeToggle } from "./theme-mode-toggle";
@@ -487,6 +487,160 @@ export function HomePage({ content }: HomePageProps) {
         </div>
       </section>
     </main>
+  );
+}
+
+export function HomePagePreview({
+  content,
+  viewport,
+}: {
+  content: SiteContent;
+  viewport: "desktop" | "tablet" | "mobile";
+}) {
+  const wallpaper = content.theme.backgroundImage || content.theme.light.backgroundImage;
+  const previewFlowCards = (content.services ?? []).slice(0, 2);
+  const previewTheme = normalizeSiteTheme(content.theme);
+
+  return (
+    <div
+      className={styles.page}
+      data-banner={content.theme.bannerStyle ?? "editorial"}
+      data-contrast={content.theme.contrast}
+      data-preview="true"
+      data-preview-viewport={viewport}
+      data-theme-scope
+      style={
+        {
+          ...themeCssVariables(content.theme),
+          "--accent": previewTheme.accent,
+          "--accent-alt": previewTheme.accentAlt,
+          "--background": previewTheme.background,
+          "--foreground": previewTheme.foreground,
+          "--muted": previewTheme.muted,
+          "--line": previewTheme.line,
+          "--panel": previewTheme.panel,
+          "--panel-strong": previewTheme.panelStrong,
+          "--ink": previewTheme.ink,
+          ...(wallpaper ? { "--cv-wallpaper": `url(${wallpaper})` } : {}),
+          "--theme-wallpaper-visibility": `${content.theme.surface?.wallpaperVisibility ?? 30}%`,
+          "--theme-surface-visibility": `${content.theme.surface?.surfaceVisibility ?? 30}%`,
+          "--theme-strong-scrim": `${content.theme.surface?.strongScrim ?? 88}%`,
+          "--theme-medium-scrim": `${content.theme.surface?.mediumScrim ?? 56}%`,
+          "--theme-border-radius": `${content.theme.surface?.borderRadius ?? 16}px`,
+          "--theme-border-width": `${content.theme.surface?.borderWidth ?? 1}px`,
+          "--theme-blur-strength": `${content.theme.surface?.blurStrength ?? 10}px`
+        } as React.CSSProperties
+      }
+    >
+      <nav className={styles.nav}>
+        <div className={styles.brand}>
+          <span>{content.homeText?.builtByLabel ?? "Built by"}</span>
+          <strong>{content.siteTitle}</strong>
+        </div>
+        <div className={styles.navLinks}>
+          <span className={styles.navPill} data-tone="flows">Flows</span>
+          <span className={styles.navPill} data-tone="modules">Modules</span>
+          <span className={styles.navPill} data-tone="venue">Venue</span>
+        </div>
+      </nav>
+
+      <section className={styles.hero}>
+        {wallpaper ? (
+          <div className={styles.wallpaperBanner} aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={wallpaper} alt="" />
+          </div>
+        ) : null}
+        <div className={styles.heroCopy}>
+          <p className={styles.kicker}>{content.subtitle}</p>
+          <h1>{content.cv.fullName}</h1>
+          <p className={styles.heroHeadline}>{content.cv.headline}</p>
+          <p className={styles.summaryText}>{content.heroText ?? content.cv.summary}</p>
+          <div className={styles.heroActions}>
+            <span className={styles.primaryAction}>{content.primaryCta ?? "View events"}</span>
+            <span className={styles.secondaryAction}>{content.secondaryCta ?? "Explore modules"}</span>
+          </div>
+        </div>
+
+        <aside className={styles.operatorBoard}>
+          <div className={styles.boardHeader}>
+            <p>Quick view</p>
+            <strong>Tonight&apos;s operating stack</strong>
+          </div>
+          <div className={styles.boardGrid}>
+            <article>
+              <span>Fee por ticket</span>
+              <strong>$15 MXN</strong>
+              <small>Se suma al checkout del público.</small>
+            </article>
+            <article>
+              <span>Mobile first</span>
+              <strong>4G-ready</strong>
+              <small>Feed cacheado y checkout defensivo.</small>
+            </article>
+          </div>
+          <div className={styles.boardStream}>
+            <div>
+              <b>20:00</b>
+              <span>Landing activa + tickets live</span>
+            </div>
+            <div>
+              <b>22:00</b>
+              <span>Check-in QR + ledger corriendo</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section className={styles.flowSection}>
+        <div className={styles.sectionHeading}>
+          <p>Modules</p>
+          <h2>{content.servicesIntro}</h2>
+        </div>
+        <div className={styles.flowGrid}>
+          {previewFlowCards.map((service) => (
+            <article key={service.title} className={styles.flowCard}>
+              <span>{service.eyebrow}</span>
+              <h3>{service.title}</h3>
+              <p>{service.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.workspaceSection}>
+        <div className={styles.workspaceGrid}>
+          <article className={styles.workspaceNarrative}>
+            <p>{content.bioText}</p>
+          </article>
+          <article className={styles.workspacePreview}>
+            <div className={styles.previewTopbar}>
+              <span>Event Composer</span>
+              <i />
+              <i />
+              <i />
+            </div>
+            <div className={styles.previewBody}>
+              <div className={styles.previewColumn}>
+                <strong>Event</strong>
+                <span>Midnight Cumbia Systems</span>
+                <span>Capacity: 320</span>
+              </div>
+              <div className={styles.previewColumn}>
+                <strong>Checkout</strong>
+                <span>Consumer fee: $15</span>
+                <span>State: published</span>
+              </div>
+              <div className={styles.previewColumn}>
+                <strong>Settlement</strong>
+                <span>Venue net: visible</span>
+                <span>Ledger: locked</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
   );
 }
 

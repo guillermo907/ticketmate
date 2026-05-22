@@ -1,11 +1,42 @@
 .page {
   --theme-card-chroma: 10;
+  position: relative;
+  isolation: isolate;
   min-height: 100dvh;
   padding: 1.2rem;
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--admin-bg) 88%, black), color-mix(in srgb, var(--accent) 14%, var(--admin-bg))),
     var(--admin-bg);
   color: var(--admin-fg);
+  overflow-x: clip;
+}
+
+.page::before {
+  position: fixed;
+  inset: -5rem;
+  z-index: -2;
+  content: "";
+  opacity: var(--admin-preview-wallpaper-opacity, 0);
+  background-image:
+    radial-gradient(circle at 10% 14%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 24rem),
+    radial-gradient(circle at 84% 12%, color-mix(in srgb, var(--accent-alt) 22%, transparent), transparent 20rem),
+    var(--admin-preview-wallpaper, none);
+  background-position: center;
+  background-size: cover;
+  filter: blur(calc(var(--theme-blur-strength) * 4.2)) saturate(1.08);
+  transform: scale(1.08);
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.page::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--admin-bg) 88%, black), color-mix(in srgb, var(--accent) 14%, var(--admin-bg))),
+    color-mix(in srgb, var(--admin-bg) 92%, black);
+  pointer-events: none;
 }
 
 .shell {
@@ -17,6 +48,21 @@
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--admin-panel-strong) 76%, transparent), color-mix(in srgb, var(--admin-panel) 72%, transparent));
   backdrop-filter: blur(12px);
+}
+
+.page[data-global-preview="true"] .shell {
+  border-radius: calc(var(--theme-border-radius) + 4px);
+  border-width: var(--theme-border-width);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--admin-panel-strong) var(--theme-strong-scrim), transparent),
+      color-mix(in srgb, var(--admin-panel) var(--theme-surface-visibility), transparent)
+    );
+  backdrop-filter: blur(var(--theme-blur-strength));
+  box-shadow:
+    0 24px 72px rgb(0 0 0 / 0.18),
+    inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
 }
 
 .header p { margin: 0; text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; color: var(--admin-muted); }
@@ -63,40 +109,447 @@
   align-items: start;
   display: grid;
   gap: .9rem;
-  grid-template-columns: .9fr 1.1fr;
+  grid-template-columns: minmax(0, 1.1fr) 22rem;
   margin-top: 1rem;
 }
 
 .themeColumn,
-.cvColumn {
+.cvColumn,
+.previewColumn {
   display: grid;
   gap: .9rem;
   min-width: 0;
 }
 
-.themePreview {
-  --preview-wallpaper: none;
+.previewColumn {
+  position: sticky;
+  top: 1rem;
+}
+
+.globalPreviewToggle {
   display: grid;
-  grid-template-columns: 1.4fr .8fr;
+  grid-template-columns: auto 1fr;
   gap: .8rem;
-  margin-top: 1rem;
+  align-items: start;
+  padding: .85rem .95rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 12%, transparent);
+  border-radius: .9rem;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 14%, transparent), transparent 9rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 72%),
+    color-mix(in srgb, var(--admin-panel-strong) 72%, transparent);
+}
+
+.globalPreviewToggle input {
+  margin-top: .15rem;
+  accent-color: var(--accent);
+}
+
+.globalPreviewToggle strong {
+  display: block;
+  color: var(--admin-fg);
+  font-size: .95rem;
+}
+
+.globalPreviewToggle small {
+  display: block;
+  margin-top: .16rem;
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+.uploadStatus {
+  display: grid;
+  gap: .4rem;
+}
+
+.uploadStatus[data-busy="true"] small {
+  color: var(--admin-fg);
+}
+
+.uploadStatusBar {
+  position: relative;
+  overflow: hidden;
+  height: .42rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 12%, transparent);
+  background: color-mix(in srgb, var(--admin-panel-strong) 86%, transparent);
+}
+
+.uploadStatusBar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 94%, white), color-mix(in srgb, var(--accent-alt) 90%, white));
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 28%, transparent);
+  transition: width 220ms ease;
+}
+
+.uploadStatus small {
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+.themePreviewPanel {
+  display: grid;
+  gap: .9rem;
+  padding: .95rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  border-radius: .9rem;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 12rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--admin-panel-strong) 84%, transparent), color-mix(in srgb, var(--admin-panel) 72%, transparent));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 18px 36px rgb(0 0 0 / 0.14);
+}
+
+.previewPanelHeader,
+.previewPanelTitle,
+.previewPanelMeta {
+  display: grid;
+  gap: .65rem;
+}
+
+.previewPanelTitle {
+  gap: .18rem;
+}
+
+.previewPanelTitle span {
+  color: var(--admin-muted);
+  font-size: .74rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.previewPanelTitle strong {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.previewPanelTitle small {
+  color: var(--admin-muted);
+  line-height: 1.5;
+}
+
+.previewPanelMeta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.previewPanelMeta article {
+  display: grid;
+  gap: .16rem;
+  padding: .72rem .8rem;
+  border-radius: .78rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 78%),
+    color-mix(in srgb, var(--admin-panel-strong) 68%, transparent);
+}
+
+.previewPanelMeta span {
+  color: var(--admin-muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.previewPanelMeta strong {
+  font-size: .84rem;
+  line-height: 1.25;
+}
+
+.previewModeStrip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.previewModeCard {
+  display: grid;
+  gap: .28rem;
+  padding: .72rem .8rem;
+  border-radius: .78rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 78%),
+    color-mix(in srgb, var(--admin-panel-strong) 68%, transparent);
+}
+
+.previewModeCard > span {
+  color: var(--admin-muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.previewModeSwatch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  padding: .6rem .68rem;
+  border-radius: .74rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 12%, transparent);
+}
+
+.previewModeSwatch i {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+}
+
+.previewModeSwatch b {
+  font-size: .82rem;
+  line-height: 1.1;
+}
+
+.previewModeSwatch[data-mode="dark"] {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--preview-accent) 16%, transparent), transparent 74%),
+    var(--preview-background);
+  color: var(--preview-foreground);
+}
+
+.previewModeSwatch[data-mode="dark"] i {
+  background: linear-gradient(135deg, var(--preview-accent), var(--preview-accent-alt));
+}
+
+.previewModeSwatch[data-mode="light"] {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--preview-light-accent) 14%, transparent), transparent 74%),
+    var(--preview-light-background);
+  color: var(--preview-light-foreground);
+}
+
+.previewModeSwatch[data-mode="light"] i {
+  background: linear-gradient(135deg, var(--preview-light-accent), var(--preview-light-accent-alt));
+}
+
+.previewDeviceFrame {
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  border-radius: .95rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  background:
+    radial-gradient(circle at 82% 12%, color-mix(in srgb, var(--accent-alt) 14%, transparent), transparent 8rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--admin-bg) 50%, black), color-mix(in srgb, var(--admin-panel) 80%, transparent));
+  min-height: 24rem;
+  overflow: hidden;
+}
+
+.previewViewportGrid {
+  display: grid;
+  gap: .8rem;
+}
+
+.previewViewportRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .8rem;
+}
+
+.previewViewportCard {
+  display: grid;
+  gap: .65rem;
+  justify-items: center;
+  padding: .8rem;
+  border-radius: .9rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 10%, transparent), transparent 8rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 76%),
+    color-mix(in srgb, var(--admin-panel-strong) 72%, transparent);
+}
+
+.previewViewportRow .previewViewportCard:last-child {
+  width: min(100%, 12.5rem);
+  justify-self: center;
+}
+
+.previewViewportHeader {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.previewViewportHeader div {
+  display: grid;
+  gap: .14rem;
+}
+
+.previewViewportHeader span {
+  color: var(--admin-muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.previewViewportHeader strong {
+  font-size: .9rem;
+  line-height: 1.2;
+}
+
+.previewViewportHeader small {
+  color: var(--admin-muted);
+  font-size: .68rem;
+}
+
+.previewViewportStage {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--preview-display-height);
+}
+
+.previewViewportWindow {
+  flex: 0 0 auto;
+  width: var(--preview-display-width);
+  height: var(--preview-display-height);
+  margin-inline: auto;
+}
+
+.themePreview {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--preview-foreground) 18%, transparent);
-  border-radius: .6rem;
-  padding: .9rem;
+  border-radius: 1rem;
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--preview-background) 92%, black), color-mix(in srgb, var(--preview-background) 48%, transparent)),
-    var(--preview-wallpaper),
+    linear-gradient(90deg, color-mix(in srgb, var(--preview-background) 68%, black), color-mix(in srgb, var(--preview-background) 24%, transparent)),
     var(--preview-background);
   background-position: center;
   background-size: cover;
   color: var(--preview-foreground);
+  width: 100%;
+  height: 100%;
+}
+
+.themePreview > div {
+  flex: 0 0 auto;
+  width: var(--preview-viewport-width);
+  height: var(--preview-viewport-height);
+  transform: scale(var(--preview-scale));
+  transform-origin: top center;
+}
+
+.themePreviewShell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
+
+.previewScene {
+  min-height: 100%;
+  padding: .68rem;
+  display: grid;
+  align-content: start;
+  gap: .62rem;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--preview-panel) var(--theme-strong-scrim), transparent),
+      color-mix(in srgb, var(--preview-background) 24%, transparent)
+    ),
+    radial-gradient(circle at 78% 14%, color-mix(in srgb, var(--preview-accent-alt) 18%, transparent), transparent 26%),
+    var(--preview-background);
+}
+
+.previewSceneNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .55rem;
+}
+
+.previewSceneBrand {
+  display: grid;
+  gap: .06rem;
+}
+
+.previewSceneBrand span {
+  color: var(--preview-muted);
+  font-size: .42rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.previewSceneBrand strong {
+  color: var(--preview-foreground);
+  font-size: .8rem;
+  line-height: 1;
+}
+
+.previewScenePills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .28rem;
+}
+
+.previewScenePills i,
+.previewActionRow i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.25rem;
+  padding: 0 .42rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--preview-foreground) 14%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--preview-accent) 12%, transparent), transparent 76%),
+    color-mix(in srgb, var(--preview-panel) var(--theme-surface-visibility), transparent);
+  color: var(--preview-foreground);
+  font-size: .42rem;
+  font-style: normal;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.previewFooterMeta {
+  align-content: start;
+  justify-content: start;
+  background: color-mix(in srgb, var(--preview-panel) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--preview-foreground) 16%, transparent);
+  border-radius: .7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  padding: .6rem;
+}
+
+.previewFooterMeta i {
+  background: color-mix(in srgb, var(--preview-accent) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--preview-accent) 42%, transparent);
+  border-radius: 999px;
+  color: var(--preview-foreground);
+  font-size: .74rem;
+  font-style: normal;
+  padding: .25rem .45rem;
 }
 
 .previewHero {
   display: grid;
-  gap: .35rem;
+  grid-template-columns: minmax(0, 1.35fr) minmax(6.1rem, .92fr);
+  align-items: stretch;
+  gap: .62rem;
   min-width: 0;
+}
+
+.previewHeroMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .55rem;
 }
 
 .previewHero span {
@@ -106,38 +559,409 @@
   text-transform: uppercase;
 }
 
-.previewHero strong {
-  color: var(--preview-foreground);
-  font-size: clamp(1.4rem, 2vw, 2rem);
-  line-height: 1;
+.previewHeroMeta small {
+  color: color-mix(in srgb, var(--preview-muted) 86%, white);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
-.previewHero p {
-  color: var(--preview-muted);
-  line-height: 1.45;
+.previewBanner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(6rem, .9fr);
+  gap: .65rem;
+  min-height: 100%;
+  padding: .86rem;
+  border-radius: .95rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--preview-foreground) 14%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--preview-background) 76%, black), color-mix(in srgb, var(--preview-background) 18%, transparent)),
+    var(--preview-wallpaper),
+    color-mix(in srgb, var(--preview-background) 82%, black);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 12px 28px rgb(0 0 0 / 0.16);
+}
+
+.previewBanner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 80% 24%, color-mix(in srgb, var(--preview-accent) 26%, transparent), transparent 30%),
+    linear-gradient(135deg, rgb(255 255 255 / 0.02), rgb(0 0 0 / 0.08));
+  pointer-events: none;
+}
+
+.previewBannerCopy,
+.previewBannerMedia {
+  position: relative;
+  z-index: 1;
+}
+
+.previewBannerCopy {
+  display: grid;
+  align-content: end;
+  gap: .32rem;
+}
+
+.previewBannerCopy span {
+  color: color-mix(in srgb, var(--preview-muted) 92%, white);
+  font-size: .62rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.previewBannerCopy strong {
+  font-size: clamp(1.2rem, 2.15vw, 2rem);
+  line-height: .88;
+  max-width: 8ch;
+  text-wrap: balance;
+}
+
+.previewBannerCopy p {
   margin: 0;
-  max-width: 68ch;
+  max-width: 22ch;
+  color: color-mix(in srgb, var(--preview-muted) 98%, white);
+  font-size: .78rem;
+  line-height: 1.35;
 }
 
-.previewSidebar {
-  align-content: start;
-  background: var(--preview-panel);
+.previewBannerMedia {
+  align-self: stretch;
+  border-radius: .7rem;
   border: 1px solid color-mix(in srgb, var(--preview-foreground) 16%, transparent);
-  border-radius: .5rem;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0)),
+    var(--preview-wallpaper),
+    color-mix(in srgb, var(--preview-background) 62%, black);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.03);
+}
+
+.previewActionRow {
   display: flex;
   flex-wrap: wrap;
-  gap: .35rem;
+  gap: .32rem;
+  margin-top: .14rem;
+}
+
+.previewOperatorCard,
+.previewModuleCard,
+.previewWorkspaceCard {
+  border: var(--theme-border-width) solid color-mix(in srgb, var(--preview-foreground) 14%, transparent);
+  border-radius: calc(var(--theme-border-radius) * .78);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--preview-panel) var(--theme-strong-scrim), transparent),
+      color-mix(in srgb, var(--preview-panel) var(--theme-surface-visibility), transparent)
+    );
+  backdrop-filter: blur(var(--theme-blur-strength));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.previewOperatorCard {
+  display: grid;
+  align-content: start;
+  gap: .42rem;
+  padding: .72rem;
+}
+
+.previewOperatorCard p,
+.previewModuleCard span,
+.previewWorkspaceTopbar span {
+  margin: 0;
+  color: var(--preview-muted);
+  font-size: .42rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.previewOperatorCard strong,
+.previewModuleCard strong {
+  color: var(--preview-foreground);
+  font-size: .78rem;
+  line-height: 1.1;
+}
+
+.previewOperatorGrid {
+  display: grid;
+  gap: .32rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.previewOperatorGrid article {
+  display: grid;
+  gap: .14rem;
+  padding: .45rem;
+  border-radius: .6rem;
+  background: color-mix(in srgb, var(--preview-background) 20%, transparent);
+}
+
+.previewOperatorGrid span,
+.previewWorkspaceGrid strong {
+  color: var(--preview-muted);
+  font-size: .46rem;
+  line-height: 1.2;
+}
+
+.previewOperatorGrid b,
+.previewWorkspaceGrid span {
+  color: var(--preview-foreground);
+  font-size: .56rem;
+  line-height: 1.2;
+}
+
+.previewModuleRail {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.previewModuleCard {
+  display: grid;
+  gap: .28rem;
+  padding: .64rem;
+}
+
+.previewModuleCard p {
+  margin: 0;
+  color: var(--preview-muted);
+  font-size: .56rem;
+  line-height: 1.35;
+}
+
+.previewWorkspaceBand {
+  display: grid;
+}
+
+.previewWorkspaceCard {
+  display: grid;
+  gap: .46rem;
   padding: .7rem;
 }
 
-.previewSidebar i {
-  background: color-mix(in srgb, var(--preview-accent) 24%, transparent);
-  border: 1px solid color-mix(in srgb, var(--preview-accent) 42%, transparent);
+.previewWorkspaceTopbar {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, .38rem);
+  align-items: center;
+  gap: .24rem;
+}
+
+.previewWorkspaceTopbar i {
+  width: .38rem;
+  height: .38rem;
   border-radius: 999px;
-  color: var(--preview-foreground);
-  font-size: .74rem;
+  background: color-mix(in srgb, var(--preview-foreground) 72%, transparent);
+  opacity: .28;
+}
+
+.previewWorkspaceGrid {
+  display: grid;
+  gap: .38rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.previewWorkspaceGrid div {
+  display: grid;
+  gap: .1rem;
+  padding: .42rem;
+  border-radius: .58rem;
+  background: color-mix(in srgb, var(--preview-background) 24%, transparent);
+}
+
+.previewScene[data-banner-style="floating"] .previewHero {
+  grid-template-columns: 1fr;
+}
+
+.previewScene[data-banner-style="floating"] .previewOperatorCard {
+  grid-template-columns: 1fr;
+}
+
+.themePreviewShell[data-viewport="tablet"] .previewScene {
+  padding: .62rem;
+}
+
+.themePreviewShell[data-viewport="tablet"] .previewHero {
+  grid-template-columns: minmax(0, 1.2fr) minmax(5rem, .85fr);
+}
+
+.themePreviewShell[data-viewport="tablet"] .previewBanner {
+  padding: .7rem;
+}
+
+.themePreviewShell[data-viewport="tablet"] .previewBannerCopy strong {
+  font-size: 1.02rem;
+}
+
+.themePreviewShell[data-viewport="tablet"] .previewModuleRail,
+.themePreviewShell[data-viewport="tablet"] .previewWorkspaceGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewScene {
+  padding: .5rem;
+  gap: .48rem;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewSceneNav,
+.themePreviewShell[data-viewport="mobile"] .previewHero,
+.themePreviewShell[data-viewport="mobile"] .previewModuleRail,
+.themePreviewShell[data-viewport="mobile"] .previewWorkspaceGrid {
+  grid-template-columns: 1fr;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewScenePills {
+  justify-content: flex-start;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewBanner {
+  grid-template-columns: 1fr;
+  padding: .68rem;
+  min-height: 8.8rem;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewBannerMedia {
+  min-height: 3rem;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewBannerCopy strong {
+  font-size: .94rem;
+}
+
+.themePreviewShell[data-viewport="mobile"] .previewModuleCard p {
+  font-size: .5rem;
+}
+
+.previewBanner[data-banner-style="blurred"] {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--preview-background) 64%, black), color-mix(in srgb, var(--preview-background) 24%, transparent)),
+    var(--preview-wallpaper),
+    color-mix(in srgb, var(--preview-background) 70%, black);
+}
+
+.previewBanner[data-banner-style="blurred"] .previewBannerMedia {
+  filter: blur(6px) saturate(1.18);
+  transform: scale(1.08);
+}
+
+.previewBanner[data-banner-style="split"]::after {
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 0.02), transparent 55%),
+    linear-gradient(90deg, transparent 52%, color-mix(in srgb, var(--preview-accent-alt) 16%, transparent) 78%, transparent 100%);
+}
+
+.previewBanner[data-banner-style="split"] .previewBannerMedia {
+  mask-image: linear-gradient(90deg, black 0%, black 58%, transparent 100%);
+}
+
+.previewBanner[data-banner-style="floating"] {
+  grid-template-columns: 1fr;
+  min-height: 10rem;
+  background:
+    radial-gradient(circle at 70% 30%, color-mix(in srgb, var(--preview-accent) 26%, transparent), transparent 34%),
+    var(--preview-wallpaper),
+    color-mix(in srgb, var(--preview-background) 60%, black);
+}
+
+.previewBanner[data-banner-style="floating"] .previewBannerMedia {
+  display: none;
+}
+
+.surfaceControlSection {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: .75rem;
+  padding: .9rem;
+  border-radius: .9rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 12%, transparent);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 14%, transparent), transparent 8rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 76%),
+    color-mix(in srgb, var(--admin-panel) 72%, transparent);
+}
+
+.surfaceControlHeader {
+  display: grid;
+  gap: .16rem;
+}
+
+.surfaceControlHeader span {
+  color: var(--admin-fg);
+  font-size: .92rem;
+  font-weight: 700;
+}
+
+.surfaceControlHeader small {
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+.surfaceControlGrid {
+  display: grid;
+  gap: .7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.surfaceSliderCard {
+  display: grid;
+  gap: .4rem;
+  padding: .75rem;
+  border-radius: .8rem;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 10%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--admin-panel-strong) 82%, transparent), color-mix(in srgb, var(--admin-panel) 62%, transparent));
+}
+
+.surfaceSliderTopline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .7rem;
+}
+
+.surfaceSliderTopline strong {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: var(--admin-fg);
+  font-size: .88rem;
+}
+
+.surfaceSliderTopline strong i {
+  color: var(--accent);
   font-style: normal;
-  padding: .25rem .45rem;
+}
+
+.surfaceSliderCard small {
+  color: var(--admin-muted);
+  line-height: 1.45;
+}
+
+.surfaceSliderValue {
+  color: var(--admin-fg);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.tooltipButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 12%, transparent);
+  background: color-mix(in srgb, var(--admin-panel-strong) 86%, transparent);
+  color: var(--admin-muted);
+  cursor: help;
+  font-weight: 700;
 }
 
 .card,
@@ -149,6 +973,17 @@
     radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) var(--theme-card-chroma-strong), transparent), transparent 12rem),
     linear-gradient(145deg, color-mix(in srgb, var(--accent) var(--theme-card-chroma-soft), transparent), transparent 72%),
     color-mix(in srgb, var(--admin-panel-strong) 68%, transparent);
+}
+
+.page[data-global-preview="true"] .card,
+.page[data-global-preview="true"] .nestedCard {
+  border-width: var(--theme-border-width);
+  border-radius: var(--theme-border-radius);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 18%, transparent), transparent 12rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 72%),
+    color-mix(in srgb, var(--admin-panel-strong) var(--theme-surface-visibility), transparent);
+  backdrop-filter: blur(var(--theme-blur-strength));
 }
 
 .card summary,
@@ -235,6 +1070,69 @@
   grid-column: 1 / -1;
   display: grid;
   gap: .55rem;
+}
+
+.contrastPicker {
+  display: grid;
+  gap: .55rem;
+}
+
+.contrastPicker > span {
+  color: var(--admin-muted);
+  font-size: .88rem;
+}
+
+.contrastPicker > div {
+  display: grid;
+  gap: .45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.contrastPicker button {
+  align-content: start;
+  border: 1px solid color-mix(in srgb, var(--admin-fg) 14%, transparent);
+  border-radius: .75rem;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--admin-panel-strong) 72%, transparent), color-mix(in srgb, var(--admin-panel) 44%, transparent));
+  color: var(--admin-fg);
+  cursor: pointer;
+  display: grid;
+  gap: .3rem;
+  padding: .58rem;
+  text-align: left;
+  width: 100%;
+  min-height: 4.4rem;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.contrastPicker button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) var(--theme-card-border-chroma), var(--admin-line));
+}
+
+.contrastPicker button strong {
+  font-size: .84rem;
+  line-height: 1.1;
+}
+
+.contrastPicker button small {
+  color: var(--admin-muted);
+  font-size: .72rem;
+  line-height: 1.28;
+}
+
+.activeContrastMode {
+  border-color: color-mix(in srgb, var(--accent) calc(var(--theme-card-border-chroma) * 1.45), var(--admin-line)) !important;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) var(--theme-card-chroma-soft), var(--admin-panel-strong)), color-mix(in srgb, var(--admin-panel) 68%, transparent)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) calc(var(--theme-card-border-chroma) * 0.75), transparent),
+    0 10px 24px color-mix(in srgb, var(--accent) calc(var(--theme-card-chroma) * 0.85%), transparent);
 }
 
 .bannerStylePicker > span {
@@ -654,8 +1552,34 @@
   .workspaceGrid,
   .formGrid,
   .compactThemeForm,
-  .themePreview,
   .paletteGroup > div { grid-template-columns: 1fr; }
+
+  .themePreview {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .previewColumn {
+    position: static;
+  }
+
+  .previewPanelMeta,
+  .previewModeStrip,
+  .previewViewportRow,
+  .surfaceControlGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .previewViewportWindow {
+    width: 100%;
+    height: auto;
+  }
+
+  .themePreview {
+    width: 100%;
+    height: auto;
+    transform: none;
+  }
 
   .attachedPdf {
     align-items: start;

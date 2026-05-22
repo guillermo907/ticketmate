@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteEventAction, saveEventAction, type EventSaveState } from "@/app/actions/events";
 import { renderPosterPage } from "@/components/events/poster-page-renderers";
 import {
   buildPosterDesign,
-  buildPosterDesignOptions,
   posterTemplateIds,
   type PosterTemplateId,
 } from "@/lib/poster-designer";
@@ -15,6 +14,7 @@ import {
   eventVisualMotifs,
   getEventInviteStyle,
   type EventInviteStyleId,
+  type EventOperationalMoment,
   type EventVisualMotifId,
   type PosterVisibleFieldId,
   type VenueEventRecord,
@@ -28,9 +28,44 @@ type VenueWorkspaceProps = {
 type VenueEventDraft = VenueEventRecord;
 type PosterAiProposal = {
   proposal_id: number;
+  concept_id?: string;
+  asset_id?: string;
   style_title: string;
   design_storytelling: string;
   poster_url: string;
+  total_score?: number | null;
+  rank?: number | null;
+  recommendation_label?: string | null;
+  summary?: string;
+  warnings?: string[];
+  target_genres?: string[];
+  target_subfamilies?: string[];
+};
+
+type PosterAiSelectionResult = {
+  ok: boolean;
+  saved_asset?: {
+    poster_url?: string | null;
+    relative_url?: string;
+  } | null;
+};
+
+type EditorialBrief = {
+  titulo: string;
+  subtitulo: string;
+  descripcion_visual: string;
+  fecha: string;
+  lugar: string;
+  ciudad: string;
+  genero_o_mood: string;
+  protagonista_visual: string;
+  estilo_recomendado: "illustrated" | "editorial" | "photo-first";
+  paleta_recomendada: string[];
+  texto_obligatorio: string[];
+  formato: string;
+  nivel_de_realismo: string;
+  referencias_esteticas: string[];
+  restricciones: string[];
 };
 
 const wizardSteps = [
@@ -161,6 +196,225 @@ function splitCommaList(value: string) {
     .filter(Boolean);
 }
 
+function formatDesignerEventDate(dateValue: string) {
+  return new Date(dateValue).toLocaleString("es-MX", {
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+}
+
+function inferEventMoment(dateValue: string) {
+  const hour = new Date(dateValue).getHours();
+
+  if (hour < 12) {
+    return "matinal y luminosa";
+  }
+
+  if (hour < 18) {
+    return "vespertina y abierta";
+  }
+
+  if (hour < 22) {
+    return "nocturna, vibrante y social";
+  }
+
+  return "tardia, intensa y de culto";
+}
+
+function inferAudienceSignal(draft: VenueEventDraft) {
+  const genres = (draft.genre ?? []).join(" ").toLowerCase();
+  const title = draft.title.toLowerCase();
+
+  if (draft.ticketPriceMXN >= 450) {
+    return "audiencia premium con expectativa editorial alta";
+  }
+
+  if (genres.includes("jazz") || title.includes("jazz")) {
+    return "audiencia cultural exigente que valora sofisticacion visual";
+  }
+
+  if (genres.includes("club") || genres.includes("elect") || genres.includes("nightlife")) {
+    return "audiencia nocturna que responde a piezas energicas y memorables";
+  }
+
+  if (draft.capacity >= 500) {
+    return "audiencia amplia que necesita impacto inmediato y jerarquia clara";
+  }
+
+  return "audiencia joven-adulta que espera una pieza contemporanea y compartible";
+}
+
+function inferCityFromAddress(address: string) {
+  if (address.toLowerCase().includes("guadalajara")) {
+    return "Guadalajara";
+  }
+
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return parts.at(-2) || parts.at(-1) || "Ciudad por definir";
+}
+
+function inferRecommendedStyle(draft: VenueEventDraft, directionNote: string): EditorialBrief["estilo_recomendado"] {
+  const note = directionNote.toLowerCase();
+  const genres = (draft.genre ?? []).join(" ").toLowerCase();
+
+  if ((draft.posterAssetMode ?? "graphic-only") === "uploaded-hero" || note.includes("foto") || note.includes("phot")) {
+    return "photo-first";
+  }
+
+  if (genres.includes("jazz") || genres.includes("festival") || note.includes("ilustr")) {
+    return "illustrated";
+  }
+
+  return "editorial";
+}
+
+function inferVisualLead(draft: VenueEventDraft, style: EditorialBrief["estilo_recomendado"]) {
+  const genreText = (draft.genre ?? []).join(" ").toLowerCase();
+  const firstLineup = draft.lineup?.[0]?.trim();
+
+  if (genreText.includes("jazz")) {
+    return "figura humana musical en primer plano, gesto expresivo e instrumento protagonista";
+  }
+
+  if (style === "photo-first") {
+    return firstLineup
+      ? `retrato principal de ${firstLineup} con presencia humana dominante y recorte editorial`
+      : "retrato humano dominante con gesto fuerte y recorte editorial";
+  }
+
+  if (genreText.includes("nightlife") || genreText.includes("elect")) {
+    return "figura humana nocturna, energia de club y tension entre luz y tipografia";
+  }
+
+  return "protagonista humano claro, composicion editorial y storytelling visual inmediato";
+}
+
+function inferPalette(draft: VenueEventDraft, style: EditorialBrief["estilo_recomendado"]) {
+  const genres = (draft.genre ?? []).join(" ").toLowerCase();
+
+  if (genres.includes("jazz")) {
+    return ["navy profundo", "mostaza calida", "marfil", "tinta oscura"];
+  }
+
+  if (style === "photo-first") {
+    return ["carbon", "hueso", "cobre", "acento neon controlado"];
+  }
+
+  if (genres.includes("nightlife") || genres.includes("elect")) {
+    return ["negro humo", "verde acido", "gris grafito", "blanco duro"];
+  }
+
+  return ["azul medianoche", "arena calida", "rojo editorial", "negro suave"];
+}
+
+function inferReferences(draft: VenueEventDraft, style: EditorialBrief["estilo_recomendado"]) {
+  const genres = (draft.genre ?? []).join(" ").toLowerCase();
+
+  if (genres.includes("jazz")) {
+    return ["Blue Note posters", "litografia cultural mexicana", "Swiss editorial rhythm"];
+  }
+
+  if (style === "photo-first") {
+    return ["fashion editorial posters", "cinematic key art", "gallery-grade portrait crops"];
+  }
+
+  if (genres.includes("nightlife") || genres.includes("elect")) {
+    return ["Bauhaus nightlife flyers", "acid graphics", "club identity systems"];
+  }
+
+  return ["premium cultural posters", "editorial typography", "contemporary festival graphics"];
+}
+
+function buildEditorialBrief(draft: VenueEventDraft, directionNote: string): EditorialBrief {
+  const style = inferRecommendedStyle(draft, directionNote);
+  const subtitle = draft.summary.trim() || `${draft.venueName} · ${formatDesignerEventDate(draft.startsAt)}`;
+  const genres = (draft.genre ?? []).filter(Boolean).join(" / ") || "evento en vivo";
+  const lineup = (draft.lineup ?? []).filter(Boolean).join(" / ");
+  const audience = inferAudienceSignal(draft);
+  const eventMoment = inferEventMoment(draft.startsAt);
+  const userDirection = directionNote.trim();
+  const protagonist = inferVisualLead(draft, style);
+  const mandatoryText = [
+    draft.title,
+    formatDesignerEventDate(draft.startsAt),
+    draft.venueName,
+    draft.venueAddress,
+    lineup,
+    `${formatMoney(draft.ticketPriceMXN)} MXN`,
+  ].filter(Boolean);
+
+  return {
+    titulo: draft.title,
+    subtitulo: subtitle,
+    descripcion_visual: userDirection
+      ? `${userDirection}. Mantener una lectura ${eventMoment}, con jerarquia tipografica fuerte y un tono pensado para ${audience}.`
+      : `Construir un poster premium para ${draft.title} con atmosfera ${eventMoment}, alto contraste, narrativa humana clara y una lectura pensada para ${audience}.`,
+    fecha: formatDesignerEventDate(draft.startsAt),
+    lugar: draft.venueName,
+    ciudad: inferCityFromAddress(draft.venueAddress),
+    genero_o_mood: `${genres}; clima ${eventMoment}`,
+    protagonista_visual: protagonist,
+    estilo_recomendado: style,
+    paleta_recomendada: inferPalette(draft, style),
+    texto_obligatorio: mandatoryText,
+    formato: "poster premium responsive con variantes desktop, tablet y mobile",
+    nivel_de_realismo:
+      style === "photo-first" ? "alto realismo editorial" : style === "illustrated" ? "ilustrado premium con figura humana clara" : "editorial grafico con realismo controlado",
+    referencias_esteticas: inferReferences(draft, style),
+    restricciones: [
+      "Mantener contraste alto y legibilidad web/mobile",
+      "Evitar look generico o templateado",
+      "Priorizar jerarquia tipografica, composicion humana y storytelling visual",
+      "Generar 3 propuestas radicalmente distintas usando este mismo brief",
+    ],
+  };
+}
+
+function buildAiPromptSeed(brief: EditorialBrief) {
+  return `Poster premium para "${brief.titulo}" con enfoque ${brief.estilo_recomendado}, mood ${brief.genero_o_mood} y protagonista ${brief.protagonista_visual}.`;
+}
+
+function buildAiDesignContext(brief: EditorialBrief) {
+  return [
+    `Titulo: ${brief.titulo}.`,
+    `Subtitulo: ${brief.subtitulo}.`,
+    `Descripcion visual: ${brief.descripcion_visual}.`,
+    `Fecha: ${brief.fecha}.`,
+    `Lugar: ${brief.lugar}.`,
+    `Ciudad: ${brief.ciudad}.`,
+    `Genero o mood: ${brief.genero_o_mood}.`,
+    `Protagonista visual: ${brief.protagonista_visual}.`,
+    `Estilo recomendado: ${brief.estilo_recomendado}.`,
+    `Paleta recomendada: ${brief.paleta_recomendada.join(" / ")}.`,
+    `Texto obligatorio: ${brief.texto_obligatorio.join(" | ")}.`,
+    `Formato: ${brief.formato}.`,
+    `Nivel de realismo: ${brief.nivel_de_realismo}.`,
+    `Referencias esteticas: ${brief.referencias_esteticas.join(" / ")}.`,
+    `Restricciones: ${brief.restricciones.join(" / ")}.`,
+  ].join(" ");
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function createOperationalMoment(time: string, label = "Recepción"): EventOperationalMoment {
+  const id =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `moment-${Math.random().toString(36).slice(2, 10)}`;
+
+  return {
+    id,
+    label,
+    time,
+  };
+}
+
 function buildDraftFingerprint(event: VenueEventDraft) {
   return JSON.stringify({
     title: event.title,
@@ -181,6 +435,7 @@ function buildDraftFingerprint(event: VenueEventDraft) {
     posterAssetMode: event.posterAssetMode ?? "graphic-only",
     doorTime: event.doorTime,
     soundcheckTime: event.soundcheckTime,
+    operationalMoments: event.operationalMoments ?? [],
     ticketPriceMXN: event.ticketPriceMXN,
     ticketFeeMXN: event.ticketFeeMXN,
     artistPayoutRate: event.artistPayoutRate,
@@ -225,6 +480,7 @@ function createEmptyDraft(): VenueEventDraft {
     posterAssetMode: "graphic-only",
     doorTime: doorTime.toISOString(),
     soundcheckTime: soundcheckTime.toISOString(),
+    operationalMoments: [],
     ticketPriceMXN: 280,
     ticketFeeMXN: 15,
     artistPayoutRate: 0.7,
@@ -267,8 +523,12 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   const [selectedIdeaPreset, setSelectedIdeaPreset] = useState<(typeof posterIdeaPresets)[number]["id"]>(
     posterIdeaPresets[0].id,
   );
+  const [aiDirectionNote, setAiDirectionNote] = useState("");
   const [aiProposals, setAiProposals] = useState<PosterAiProposal[]>([]);
+  const [aiGenerationId, setAiGenerationId] = useState("");
   const [selectedAiProposalId, setSelectedAiProposalId] = useState<number | null>(null);
+  const [appliedAiProposalId, setAppliedAiProposalId] = useState<number | null>(null);
+  const [lastAiGenerationSignature, setLastAiGenerationSignature] = useState("");
   const [aiStatus, setAiStatus] = useState<{ loading: boolean; error: string }>({
     loading: false,
     error: "",
@@ -276,6 +536,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [saveState, saveAction, isSaving] = useActionState(saveEventAction, initialState);
   const [deleteState, deleteAction, isDeleting] = useActionState(deleteEventAction, deleteInitialState);
+  const transientAiUrlsRef = useRef<string[]>([]);
   const baselineDraft = useMemo(
     () => (selectedId === "new" ? emptyDraft : safeEvents.find((event) => event.id === selectedId) ?? emptyDraft),
     [emptyDraft, safeEvents, selectedId],
@@ -302,15 +563,74 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     [draft.designVariant],
   );
 
+  const cleanupAiPosterUrls = useCallback(async (urls: string[], keepUrl?: string) => {
+    const posterUrls = uniqueStrings(urls).filter((url) => url !== keepUrl);
+
+    if (posterUrls.length === 0) {
+      return;
+    }
+
+    try {
+      await fetch("/api/poster-designer/generate", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ poster_urls: posterUrls }),
+      });
+    } catch {
+      // Cleanup is best-effort; no-op if the designer service is unavailable.
+    }
+  }, []);
+
+  const clearTransientAiWorkspace = useCallback(async (options?: { keepSelectedUrl?: string }) => {
+    const generatedUrls = aiProposals.map((proposal) => proposal.poster_url);
+    const keepSelectedUrl = options?.keepSelectedUrl;
+    const currentPosterUrl = draft.posterReferenceUrls?.[0] ?? "";
+    const currentPosterIsTransient = generatedUrls.includes(currentPosterUrl) && currentPosterUrl !== keepSelectedUrl;
+
+    await cleanupAiPosterUrls(generatedUrls, keepSelectedUrl);
+    setAiProposals([]);
+    setAiGenerationId("");
+    setSelectedAiProposalId(null);
+    setAppliedAiProposalId(null);
+    setLastAiGenerationSignature("");
+    setAiStatus({ loading: false, error: "" });
+
+    if (currentPosterIsTransient) {
+      setDraft((current) => ({
+        ...current,
+        posterReferenceUrls: [],
+        posterArtDirection: "",
+        posterAssetMode: current.posterAssetMode === "banana-pro" ? "graphic-only" : current.posterAssetMode,
+      }));
+    }
+  }, [aiProposals, cleanupAiPosterUrls, draft.posterReferenceUrls]);
+
   useEffect(() => {
     if (saveState.ok) {
+      void cleanupAiPosterUrls(
+        transientAiUrlsRef.current,
+        saveState.savedEvent?.posterReferenceUrls?.[0] || undefined,
+      );
+
+      const timeoutId = window.setTimeout(() => {
+        setAiProposals([]);
+        setAiGenerationId("");
+        setSelectedAiProposalId(null);
+        setAppliedAiProposalId(null);
+        setLastAiGenerationSignature("");
+        setAiStatus({ loading: false, error: "" });
+      }, 0);
+
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(publicFeedCacheKey);
       }
 
       router.refresh();
+      return () => window.clearTimeout(timeoutId);
     }
-  }, [router, saveState.ok]);
+  }, [cleanupAiPosterUrls, router, saveState.ok, saveState.savedEvent]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.deletedEventId) {
@@ -331,8 +651,11 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       setDesignWizardStep(0);
       setMaxUnlockedWizardStep(0);
       setDesignSourceMode("local");
+      setAiDirectionNote("");
       setAiProposals([]);
       setSelectedAiProposalId(null);
+      setAppliedAiProposalId(null);
+      setLastAiGenerationSignature("");
       setAiStatus({ loading: false, error: "" });
     }, 0);
 
@@ -380,11 +703,12 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       if (pendingHeroPreview) {
         URL.revokeObjectURL(pendingHeroPreview);
       }
+
+      void cleanupAiPosterUrls(transientAiUrlsRef.current);
     };
-  }, [pendingHeroPreview]);
+  }, [cleanupAiPosterUrls, pendingHeroPreview]);
 
   const generatedDesign = useMemo(() => buildPosterDesign(previewDraft), [previewDraft]);
-  const designOptions = useMemo(() => buildPosterDesignOptions(previewDraft), [previewDraft]);
   const selectedStyle = useMemo(() => getEventInviteStyle(generatedDesign.variant), [generatedDesign.variant]);
   const visiblePosterFields = useMemo(
     () => (draft.posterVisibleFields?.length ? draft.posterVisibleFields : posterFieldOptions.map((field) => field.id)),
@@ -428,17 +752,40 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   const stepMeta = wizardSteps[designWizardStep];
   const isFirstWizardStep = designWizardStep === 0;
   const isLastWizardStep = designWizardStep === wizardSteps.length - 1;
-  const visibleAiProposals = useMemo(() => aiProposals.slice(0, 3), [aiProposals]);
   const selectedAiProposal = useMemo(
-    () => visibleAiProposals.find((proposal) => proposal.proposal_id === selectedAiProposalId) ?? visibleAiProposals[0] ?? null,
-    [selectedAiProposalId, visibleAiProposals],
+    () => aiProposals.find((proposal) => proposal.proposal_id === selectedAiProposalId) ?? aiProposals[0] ?? null,
+    [aiProposals, selectedAiProposalId],
   );
-  const canAdvanceFromStep0 = Boolean(draft.title.trim() && draft.summary.trim() && draft.description.trim() && visiblePosterFields.length > 0);
+  const hasAppliedSelectedAiProposal = Boolean(
+    selectedAiProposal && appliedAiProposalId === selectedAiProposal.proposal_id,
+  );
+  const generatedEditorialBrief = useMemo(() => buildEditorialBrief(draft, aiDirectionNote), [aiDirectionNote, draft]);
+  const generatedEditorialBriefJson = useMemo(() => JSON.stringify(generatedEditorialBrief, null, 2), [generatedEditorialBrief]);
+  const generatedAiPrompt = useMemo(() => buildAiPromptSeed(generatedEditorialBrief), [generatedEditorialBrief]);
+  const generatedAiContext = useMemo(() => buildAiDesignContext(generatedEditorialBrief), [generatedEditorialBrief]);
+  const currentAiSignature = useMemo(
+    () => JSON.stringify({ prompt: generatedAiPrompt, context: generatedAiContext }),
+    [generatedAiContext, generatedAiPrompt],
+  );
+  const aiProposalsAreCurrent = Boolean(aiProposals.length > 0 && lastAiGenerationSignature === currentAiSignature);
+  const canAdvanceFromStep0 = Boolean(
+    draft.title.trim() &&
+      draft.summary.trim() &&
+      draft.description.trim() &&
+      draft.venueName.trim() &&
+      draft.venueAddress.trim() &&
+      (draft.lineup ?? []).length > 0 &&
+      visiblePosterFields.length > 0,
+  );
   const canAdvanceFromStep1 =
     designSourceMode === "local"
       ? Boolean(selectedPreset && (draft.designTemplateId ?? generatedDesign.templateId))
-      : Boolean((draft.posterArtDirection ?? "").trim() && visibleAiProposals.length > 0 && !aiStatus.loading);
+      : Boolean(hasAppliedSelectedAiProposal && aiProposalsAreCurrent && !aiStatus.loading);
   const canOpenReviewTabs = designWizardStep === 2;
+
+  useEffect(() => {
+    transientAiUrlsRef.current = aiProposals.map((proposal) => proposal.poster_url);
+  }, [aiProposals]);
 
   function applyEvent(event: VenueEventRecord | null) {
     setDraft(event ? normalizeDraftRecord(event) : emptyDraft);
@@ -448,12 +795,17 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     setDesignWizardStep(0);
     setMaxUnlockedWizardStep(0);
     setDesignSourceMode("local");
+    setAiDirectionNote("");
     setAiProposals([]);
+    setAiGenerationId("");
     setSelectedAiProposalId(null);
+    setAppliedAiProposalId(null);
+    setLastAiGenerationSignature("");
     setAiStatus({ loading: false, error: "" });
   }
 
   function selectEvent(id: string) {
+    void clearTransientAiWorkspace();
     setSelectedId(id);
 
     if (id === "new") {
@@ -469,6 +821,36 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     setDraft((current) => ({
       ...current,
       [key]: value,
+    }));
+  }
+
+  function addOperationalMoment() {
+    setDraft((current) => ({
+      ...current,
+      operationalMoments: [
+        ...(current.operationalMoments ?? []),
+        createOperationalMoment(current.doorTime || current.startsAt),
+      ],
+    }));
+  }
+
+  function updateOperationalMoment(
+    momentId: string,
+    key: keyof Pick<EventOperationalMoment, "label" | "time">,
+    value: string,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      operationalMoments: (current.operationalMoments ?? []).map((moment) =>
+        moment.id === momentId ? { ...moment, [key]: value } : moment,
+      ),
+    }));
+  }
+
+  function removeOperationalMoment(momentId: string) {
+    setDraft((current) => ({
+      ...current,
+      operationalMoments: (current.operationalMoments ?? []).filter((moment) => moment.id !== momentId),
     }));
   }
 
@@ -510,13 +892,26 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
       designVariant: preset.localVariant,
       designTemplateId: preset.localTemplate,
       designMotifs: preset.motifs,
-      posterArtDirection: preset.prompt,
     }));
     setPreviewScreen("preview");
   }
 
+  function updateLocalPhotoUsage(enabled: boolean) {
+    updateDraft("posterAssetMode", enabled ? "uploaded-hero" : "graphic-only");
+  }
+
+  function switchDesignSourceMode(mode: "local" | "ai") {
+    if (mode === "local" && designSourceMode === "ai") {
+      void clearTransientAiWorkspace();
+    }
+
+    setDesignSourceMode(mode);
+    setPreviewScreen("preview");
+  }
+
   async function generateAiPosterDirections() {
-    const preset = posterIdeaPresets.find((item) => item.id === selectedIdeaPreset) ?? posterIdeaPresets[0];
+    setAiStatus({ loading: true, error: "" });
+    await clearTransientAiWorkspace();
     setAiStatus({ loading: true, error: "" });
 
     try {
@@ -526,13 +921,11 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: draft.posterArtDirection?.trim() || preset.prompt,
+          prompt: generatedAiPrompt,
+          design_context: generatedAiContext,
           event_name: draft.title,
           lineup: draft.lineup,
-          event_date: new Date(draft.startsAt).toLocaleString("es-MX", {
-            dateStyle: "full",
-            timeStyle: "short",
-          }),
+          event_date: formatDesignerEventDate(draft.startsAt),
           venue: `${draft.venueName} · ${draft.venueAddress}`,
           purchase_link: `https://foro-gdl.local/events/${draft.slug || "preview"}`,
         }),
@@ -544,12 +937,13 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
         throw new Error(payload.detail || "No fue posible generar propuestas IA.");
       }
 
-      const proposals = (payload.proposals ?? []).slice(0, 3);
+      const proposals = Array.isArray(payload.proposals) ? payload.proposals : [];
       setAiProposals(proposals);
+      setAiGenerationId(typeof payload.generation_id === "string" ? payload.generation_id : "");
       setSelectedAiProposalId(proposals[0]?.proposal_id ?? null);
+      setAppliedAiProposalId(null);
+      setLastAiGenerationSignature(currentAiSignature);
       setPreviewScreen("preview");
-      setDesignWizardStep(2);
-      setMaxUnlockedWizardStep(2);
     } catch (error) {
       setAiStatus({
         loading: false,
@@ -579,6 +973,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
   }
 
   function resetDraftToSavedState() {
+    void clearTransientAiWorkspace();
     applyEvent(selectedId === "new" ? null : safeEvents.find((event) => event.id === selectedId) ?? null);
   }
 
@@ -599,6 +994,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
 
     const normalized = typed.trim();
     setDeleteConfirmation(normalized);
+    void clearTransientAiWorkspace();
 
     window.setTimeout(() => {
       const form = document.getElementById(deleteFormId) as HTMLFormElement | null;
@@ -606,14 +1002,44 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     }, 0);
   }
 
-  function applySelectedAiProposal() {
+  async function applySelectedAiProposal() {
     if (!selectedAiProposal) {
       return;
     }
 
+    let finalPosterUrl = selectedAiProposal.poster_url;
+
+    if (aiGenerationId && selectedAiProposal.asset_id) {
+      try {
+        const response = await fetch("/api/poster-designer/select", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            generation_id: aiGenerationId,
+            selected_asset_id: selectedAiProposal.asset_id,
+            persist_selected: true,
+          }),
+        });
+        const payload = (await response.json()) as PosterAiSelectionResult;
+        if (response.ok && payload.ok && payload.saved_asset?.poster_url) {
+          finalPosterUrl = payload.saved_asset.poster_url;
+        }
+      } catch {
+        // Fall back to the temporary URL if persistence is unavailable.
+      }
+    } else {
+      void cleanupAiPosterUrls(
+        aiProposals.map((proposal) => proposal.poster_url),
+        selectedAiProposal.poster_url,
+      );
+    }
+
     updateDraft("posterArtDirection", selectedAiProposal.design_storytelling);
-    updateDraft("posterReferenceUrls", [selectedAiProposal.poster_url]);
+    updateDraft("posterReferenceUrls", [finalPosterUrl]);
     updateDraft("posterAssetMode", "banana-pro");
+    setAppliedAiProposalId(selectedAiProposal.proposal_id);
   }
 
   function goToWizardStep(step: 0 | 1 | 2) {
@@ -635,6 +1061,13 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     }
   }
 
+  function forceWizardStep(step: 0 | 1 | 2) {
+    setDesignWizardStep(step);
+    if (step === 2) {
+      setPreviewScreen("preview");
+    }
+  }
+
   function goToNextWizardStep() {
     if (designWizardStep === 0 && !canAdvanceFromStep0) {
       return;
@@ -647,7 +1080,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
     if (!isLastWizardStep) {
       const nextStep = (designWizardStep + 1) as 0 | 1 | 2;
       setMaxUnlockedWizardStep((current) => (current < nextStep ? nextStep : current));
-      goToWizardStep((designWizardStep + 1) as 0 | 1 | 2);
+      forceWizardStep(nextStep);
     }
   }
 
@@ -746,6 +1179,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
               <input type="hidden" name="posterArtDirection" value={draft.posterArtDirection ?? ""} />
               <input type="hidden" name="posterReferenceUrls" value={(draft.posterReferenceUrls ?? []).join("\n")} />
               <input type="hidden" name="posterAssetMode" value={draft.posterAssetMode ?? "graphic-only"} />
+              <input type="hidden" name="operationalMoments" value={JSON.stringify(draft.operationalMoments ?? [])} />
 
               <div className={styles.formSections}>
                 <details className={styles.formSection} open>
@@ -755,37 +1189,75 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                       <span>Datos base del evento</span>
                     </span>
                   </summary>
+                  <div className={styles.sectionHintRibbon}>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">✎</span>
+                      <strong>Identidad</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">⌘</span>
+                      <strong>Contexto</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◔</span>
+                      <strong>SEO + poster</strong>
+                    </article>
+                  </div>
                   <div className={styles.formGrid}>
-                    <label className={styles.fullWidth}>
-                      <span>Título</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardHero}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>Título</strong>
+                        <small>Nombre principal que dominará la página y el poster.</small>
+                      </span>
                       <input name="title" value={draft.title} onChange={(event) => updateDraft("title", event.target.value)} />
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Resumen corto</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>≈ Resumen corto</strong>
+                        <small>Hook rápido para listings, previews y lectura inmediata.</small>
+                      </span>
                       <input name="summary" value={draft.summary} onChange={(event) => updateDraft("summary", event.target.value)} />
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Descripción pública</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardEditorial}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>¶ Descripción pública</strong>
+                        <small>Contexto editorial para sitio, share cards y brief creativo.</small>
+                      </span>
                       <textarea name="description" rows={5} value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
                     </label>
-                    <label>
-                      <span>Venue</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardVenue}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>⌂ Venue</strong>
+                        <small>Lugar principal visible al público.</small>
+                      </span>
                       <input name="venueName" value={draft.venueName} onChange={(event) => updateDraft("venueName", event.target.value)} />
                     </label>
-                    <label>
-                      <span>Timezone</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◷ Timezone</strong>
+                        <small>Controla fechas, horarios y consistencia de publicación.</small>
+                      </span>
                       <input name="timezone" value={draft.timezone} onChange={(event) => updateDraft("timezone", event.target.value)} />
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Dirección</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardVenue}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>⌖ Dirección</strong>
+                        <small>Ubicación completa para mapa, CTA y texto obligatorio.</small>
+                      </span>
                       <input name="venueAddress" value={draft.venueAddress} onChange={(event) => updateDraft("venueAddress", event.target.value)} />
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Lineup (separado por comas)</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardCast}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>♫ Lineup</strong>
+                        <small>Separado por comas. Alimenta poster, landing y brief del diseñador.</small>
+                      </span>
                       <input name="lineup" value={draft.lineup.join(", ")} onChange={(event) => updateDraft("lineup", splitCommaList(event.target.value))} />
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Géneros (separado por comas)</span>
+                    <label className={`${styles.fullWidth} ${styles.fieldCard} ${styles.fieldCardMood}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>♬ Géneros</strong>
+                        <small>Separado por comas. Ayuda a inferir mood, paleta y dirección visual.</small>
+                      </span>
                       <input name="genre" value={draft.genre.join(", ")} onChange={(event) => updateDraft("genre", splitCommaList(event.target.value))} />
                     </label>
                   </div>
@@ -799,22 +1271,101 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                     </span>
                   </summary>
                   <div className={styles.formGrid}>
-                    <label>
-                      <span>Inicio</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◷ Inicio</strong>
+                        <small>Hora oficial de arranque visible en listing, poster y landing.</small>
+                      </span>
                       <input type="datetime-local" name="startsAt" value={toDateTimeLocalValue(draft.startsAt)} onChange={(event) => updateDraft("startsAt", new Date(event.target.value).toISOString())} />
                     </label>
-                    <label>
-                      <span>Fin</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMeta}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◴ Fin</strong>
+                        <small>Cierre programado del evento para operación y comunicación.</small>
+                      </span>
                       <input type="datetime-local" name="endsAt" value={toDateTimeLocalValue(draft.endsAt)} onChange={(event) => updateDraft("endsAt", new Date(event.target.value).toISOString())} />
                     </label>
-                    <label>
-                      <span>Doors</span>
+                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote}`}>
+                      <strong>Doors</strong>
+                      <small>Sepáralo como momento operativo: define desde cuándo puede entrar la gente, aunque el show empiece después.</small>
+                    </div>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardDoors}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>⟐ Doors</strong>
+                        <small>Apertura de puertas. Úsalo para acceso, filas y timing de consumo.</small>
+                      </span>
                       <input type="datetime-local" name="doorTime" value={toDateTimeLocalValue(draft.doorTime)} onChange={(event) => updateDraft("doorTime", new Date(event.target.value).toISOString())} />
                     </label>
-                    <label>
-                      <span>Soundcheck</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardOps}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◌ Soundcheck</strong>
+                        <small>Referencia interna para producción, staff y coordinación del venue.</small>
+                      </span>
                       <input type="datetime-local" name="soundcheckTime" value={toDateTimeLocalValue(draft.soundcheckTime)} onChange={(event) => updateDraft("soundcheckTime", new Date(event.target.value).toISOString())} />
                     </label>
+                    <div className={`${styles.fullWidth} ${styles.inlineSectionNote} ${styles.inlineSectionNoteOps}`}>
+                      <strong>Momentos operativos extra</strong>
+                      <small>Agrega checkpoints propios del venue como recepción, acceso staff, briefing o cualquier momento importante previo al show.</small>
+                    </div>
+                    <div className={`${styles.fullWidth} ${styles.operationalMomentsPanel}`}>
+                      <div className={styles.operationalMomentsHeader}>
+                        <div className={styles.operationalMomentsCopy}>
+                          <strong>Timeline custom del evento</strong>
+                          <small>Estos momentos viven junto a doors y soundcheck, y se guardan como parte de la operación del evento.</small>
+                        </div>
+                        <button type="button" className={styles.operationalMomentAddButton} onClick={addOperationalMoment}>
+                          <span aria-hidden="true">＋</span>
+                          <strong>Agregar momento</strong>
+                        </button>
+                      </div>
+
+                      {(draft.operationalMoments ?? []).length ? (
+                        <div className={styles.operationalMomentList}>
+                          {(draft.operationalMoments ?? []).map((moment, index) => (
+                            <div key={moment.id} className={styles.operationalMomentRow}>
+                              <label className={`${styles.fieldCard} ${styles.fieldCardOps} ${styles.operationalMomentLabelCard}`}>
+                                <span className={styles.fieldLabel}>
+                                  <strong>✦ Momento {index + 1}</strong>
+                                  <small>Nómbralo como lo usa tu equipo: recepción, hospitality, briefing, call de staff, etc.</small>
+                                </span>
+                                <input
+                                  value={moment.label}
+                                  placeholder="Recepción"
+                                  onChange={(event) => updateOperationalMoment(moment.id, "label", event.target.value)}
+                                />
+                              </label>
+                              <label className={`${styles.fieldCard} ${styles.fieldCardMeta} ${styles.operationalMomentTimeCard}`}>
+                                <span className={styles.fieldLabel}>
+                                  <strong>◷ Hora</strong>
+                                  <small>Momento exacto en el que sucede este checkpoint operativo.</small>
+                                </span>
+                                <input
+                                  type="datetime-local"
+                                  value={toDateTimeLocalValue(moment.time)}
+                                  onChange={(event) =>
+                                    updateOperationalMoment(moment.id, "time", new Date(event.target.value).toISOString())
+                                  }
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className={styles.operationalMomentRemoveButton}
+                                onClick={() => removeOperationalMoment(moment.id)}
+                                aria-label={`Borrar ${moment.label || `momento ${index + 1}`}`}
+                              >
+                                <span aria-hidden="true">✕</span>
+                                <strong>Borrar</strong>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={styles.operationalMomentEmpty}>
+                          <strong>Aún no hay momentos custom</strong>
+                          <small>Si tu operación necesita más que doors y soundcheck, crea aquí los momentos extra con un clic.</small>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </details>
 
@@ -825,30 +1376,63 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                       <span>Ticketing y publicación</span>
                     </span>
                   </summary>
+                  <div className={styles.sectionHintRibbon}>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">$</span>
+                      <strong>Monetización</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◫</span>
+                      <strong>Aforo</strong>
+                    </article>
+                    <article className={styles.infoChip}>
+                      <span aria-hidden="true">◎</span>
+                      <strong>Estado público</strong>
+                    </article>
+                  </div>
                   <div className={styles.formGrid}>
-                    <label>
-                      <span>Precio base</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMoneyHero}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◍ Precio base</strong>
+                        <small>Precio principal visible al comprador y base de cálculo para ingresos.</small>
+                      </span>
                       <input type="number" name="ticketPriceMXN" value={draft.ticketPriceMXN} onChange={(event) => updateDraft("ticketPriceMXN", Number(event.target.value))} />
                     </label>
-                    <label>
-                      <span>Fee consumidor</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardMoney}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>＋ Fee consumidor</strong>
+                        <small>Cargo adicional para el buyer. Úsalo para separar precio y fee con claridad.</small>
+                      </span>
                       <input type="number" name="ticketFeeMXN" value={draft.ticketFeeMXN} onChange={(event) => updateDraft("ticketFeeMXN", Number(event.target.value))} />
                     </label>
-                    <label>
-                      <span>% payout artista</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardFinanceAccent}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>↗ % payout artista</strong>
+                        <small>Porcentaje del ingreso destinado al artista o proyecto según tu operación.</small>
+                      </span>
                       <input type="number" min={0} max={1} step={0.01} name="artistPayoutRate" value={draft.artistPayoutRate} onChange={(event) => updateDraft("artistPayoutRate", Number(event.target.value))} />
                     </label>
-                    <label>
-                      <span>Capacidad</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◫ Capacidad</strong>
+                        <small>Máximo de asistentes disponibles para venta y operación del venue.</small>
+                      </span>
                       <input type="number" name="capacity" value={draft.capacity} onChange={(event) => updateDraft("capacity", Number(event.target.value))} />
                     </label>
-                    <label>
-                      <span>Vendidos</span>
+                    <label className={`${styles.fieldCard} ${styles.fieldCardCapacity}`}>
+                      <span className={styles.fieldLabel}>
+                        <strong>◉ Vendidos</strong>
+                        <small>Boletos ya colocados. Te ayuda a leer avance comercial y urgencia.</small>
+                      </span>
                       <input type="number" name="soldCount" value={draft.soldCount} onChange={(event) => updateDraft("soldCount", Number(event.target.value))} />
                     </label>
                     <label className={styles.publishToggle}>
                       <input type="checkbox" name="isPublished" checked={draft.isPublished} onChange={(event) => updateDraft("isPublished", event.target.checked)} />
-                      <span>Publicar landing del evento</span>
+                      <span className={styles.publishToggleIcon} aria-hidden="true">◎</span>
+                      <span className={styles.publishToggleCopy}>
+                        <strong>Publicar landing del evento</strong>
+                        <small>Activa la versión pública del evento para que ya pueda circular y vender boletos.</small>
+                      </span>
                     </label>
                   </div>
                 </details>
@@ -866,18 +1450,27 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                     </span>
                   </summary>
                   <div className={styles.wizardHeader}>
-                    {wizardSteps.map((step) => (
-                      <button
-                        key={step.id}
-                        type="button"
-                        className={designWizardStep === step.id ? styles.wizardStepActive : styles.wizardStep}
-                        onClick={() => goToWizardStep(step.id)}
-                        disabled={isWizardStepLocked(step.id)}
-                      >
-                        <span>{step.eyebrow}</span>
-                        <strong>{step.title}</strong>
-                      </button>
-                    ))}
+                    {wizardSteps.map((step) => {
+                      const isCurrent = designWizardStep === step.id;
+                      const isComplete = !isCurrent && maxUnlockedWizardStep > step.id;
+
+                      return (
+                        <button
+                          key={step.id}
+                          type="button"
+                          className={isCurrent ? styles.wizardStepActive : isComplete ? styles.wizardStepComplete : styles.wizardStep}
+                          onClick={() => goToWizardStep(step.id)}
+                          disabled={isWizardStepLocked(step.id)}
+                          aria-current={isCurrent ? "step" : undefined}
+                        >
+                          <span>{step.eyebrow}</span>
+                          <strong>{step.title}</strong>
+                          <small className={isCurrent ? styles.wizardStateCurrent : isComplete ? styles.wizardStateComplete : styles.wizardStatePending}>
+                            {isCurrent ? "Actual" : isComplete ? "Completo" : "Pendiente"}
+                          </small>
+                        </button>
+                      );
+                    })}
                   </div>
                   <div className={styles.wizardStepTitle}>
                     <span>{stepMeta.eyebrow}</span>
@@ -919,6 +1512,36 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                           <span>Descripción editorial</span>
                           <textarea rows={4} value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
                         </label>
+                        <label>
+                          <span>Fecha y hora</span>
+                          <input
+                            type="datetime-local"
+                            value={toDateTimeLocalValue(draft.startsAt)}
+                            onChange={(event) => updateDraft("startsAt", new Date(event.target.value).toISOString())}
+                          />
+                        </label>
+                        <label>
+                          <span>Venue</span>
+                          <input value={draft.venueName} onChange={(event) => updateDraft("venueName", event.target.value)} />
+                        </label>
+                        <label className={styles.fullWidth}>
+                          <span>Dirección</span>
+                          <input value={draft.venueAddress} onChange={(event) => updateDraft("venueAddress", event.target.value)} />
+                        </label>
+                        <label className={styles.fullWidth}>
+                          <span>Lineup</span>
+                          <input
+                            value={(draft.lineup ?? []).join(", ")}
+                            onChange={(event) => updateDraft("lineup", splitCommaList(event.target.value))}
+                          />
+                        </label>
+                        <label className={styles.fullWidth}>
+                          <span>Genero o mood</span>
+                          <input
+                            value={(draft.genre ?? []).join(", ")}
+                            onChange={(event) => updateDraft("genre", splitCommaList(event.target.value))}
+                          />
+                        </label>
                       </div>
                       <div className={styles.selectionHint}>
                         <strong>Bloques del poster</strong>
@@ -958,7 +1581,7 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                       <div className={styles.sectionHeading}>
                         <span>Pantalla 2</span>
                         <strong>Escoge cómo generar la dirección visual del poster</strong>
-                        <small>Local usa el sistema actual y da tres rutas; IA llama al diseñador externo y trae propuestas editoriales.</small>
+                        <small>Local configura el sistema interno del sitio; IA redacta un brief y genera propuestas editoriales externas.</small>
                       </div>
                       <div className={styles.wizardOverview}>
                         <article>
@@ -966,12 +1589,12 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                           <strong>{designSourceMode === "local" ? "Local" : "IA"}</strong>
                         </article>
                         <article>
-                          <span>Ruta base</span>
-                          <strong>{selectedPreset.title}</strong>
+                          <span>{designSourceMode === "local" ? "Ruta local" : "Brief editorial"}</span>
+                          <strong>{designSourceMode === "local" ? selectedPreset.title : `${aiProposals.length || 0} propuestas recibidas`}</strong>
                         </article>
                         <article>
                           <span>Qué hace esto</span>
-                          <strong>Define el lenguaje visual y de dónde salen las propuestas</strong>
+                          <strong>{designSourceMode === "local" ? "Configura el renderer interno del poster" : "Envía un brief al diseñador externo para generar propuestas"}</strong>
                         </article>
                       </div>
                       <div className={styles.wizardPrompt}>
@@ -979,93 +1602,110 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                         <p>¿Qué tipo de historia debería contar este poster y quién la va a producir?</p>
                       </div>
                       <div className={styles.sourceModeSwitch}>
-                        <button type="button" className={designSourceMode === "local" ? styles.sourceModeActive : styles.sourceModeButton} onClick={() => setDesignSourceMode("local")}>
+                        <button type="button" className={designSourceMode === "local" ? styles.sourceModeActive : styles.sourceModeButton} onClick={() => switchDesignSourceMode("local")}>
                           <span>Local</span>
-                          <strong>3 opciones del sistema actual</strong>
+                          <strong>Sistema interno del sitio</strong>
                         </button>
-                        <button type="button" className={designSourceMode === "ai" ? styles.sourceModeActive : styles.sourceModeButton} onClick={() => setDesignSourceMode("ai")}>
+                        <button type="button" className={designSourceMode === "ai" ? styles.sourceModeActive : styles.sourceModeButton} onClick={() => switchDesignSourceMode("ai")}>
                           <span>IA</span>
                           <strong>Consulta al diseñador externo</strong>
                         </button>
                       </div>
-                      <div className={styles.selectionHint}>
-                        <strong>Idea general</strong>
-                        <p>Selecciona una ruta estética. Esto sí cambia la variante base, el tono del poster y las opciones que luego podrás renderizar.</p>
-                      </div>
-
-                      <div className={styles.styleSelectorGrid}>
-                        {posterIdeaPresets.map((preset) => {
-                          const active = preset.id === selectedIdeaPreset;
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              className={active ? styles.styleCardActive : styles.styleCard}
-                              onClick={() => applyIdeaPreset(preset.id)}
-                              aria-pressed={active}
-                            >
-                              <div>
-                                <span className={styles.toggleState}>{active ? "ACTIVA" : "DISPONIBLE"}</span>
-                                <strong>{preset.title}</strong>
-                                <p>{preset.prompt}</p>
-                                <small>{getEventInviteStyle(preset.localVariant).tone}</small>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className={styles.formGrid}>
-                        <label className={styles.fullWidth}>
-                          <span>Brief creativo para el diseñador</span>
-                          <textarea rows={4} value={draft.posterArtDirection ?? ""} onChange={(event) => updateDraft("posterArtDirection", event.target.value)} />
-                        </label>
-                      </div>
 
                       {designSourceMode === "local" ? (
                         <div className={styles.generatedBody}>
-                          <p>El sistema local usa la variante elegida y te ofrece tres opciones listas para el renderer actual.</p>
-                          <div className={styles.optionGrid}>
-                            {designOptions.map((option) => {
-                              const active = option.templateId === generatedDesign.templateId;
+                          <div className={styles.selectionHint}>
+                            <strong>Ruta local</strong>
+                            <p>Selecciona una dirección del sistema interno. Esto cambia el tono, el renderer y la composición base del poster local.</p>
+                          </div>
+                          <div className={styles.styleSelectorGrid}>
+                            {posterIdeaPresets.map((preset) => {
+                              const active = preset.id === selectedIdeaPreset;
                               return (
                                 <button
-                                  key={option.templateId}
+                                  key={preset.id}
                                   type="button"
-                                  className={active ? styles.optionCardActive : styles.optionCard}
-                                  onClick={() => updateDraft("designTemplateId", option.templateId)}
+                                  className={active ? styles.styleCardActive : styles.styleCard}
+                                  onClick={() => applyIdeaPreset(preset.id)}
+                                  aria-pressed={active}
                                 >
-                                  <strong>{templateLabelMap[option.templateId]}</strong>
-                                  <span>{option.rendererId}</span>
-                                  <small>{option.handoff.usesPhotography ? "Photo-enabled" : "Graphic-only"}</small>
+                                  <div>
+                                    <span className={styles.toggleState}>{active ? "ACTIVA" : "DISPONIBLE"}</span>
+                                    <strong>{preset.title}</strong>
+                                    <p>{preset.prompt}</p>
+                                    <small>{getEventInviteStyle(preset.localVariant).tone}</small>
+                                  </div>
                                 </button>
                               );
                             })}
                           </div>
+                          <p>La ruta local genera una sola dirección consistente desde la idea elegida. Aquí solo decides si el poster usa sistema gráfico puro o si incorpora foto del venue.</p>
+                          <label className={styles.photoToggleCard}>
+                            <input
+                              type="checkbox"
+                              checked={(draft.posterAssetMode ?? "graphic-only") === "uploaded-hero"}
+                              onChange={(event) => updateLocalPhotoUsage(event.target.checked)}
+                            />
+                            <div>
+                              <strong>Incluir foto en el poster local</strong>
+                              <p>
+                                Si activas esta opción, el sistema usará la imagen subida por el usuario y la recortará/normalizará para integrarla al layout del poster.
+                              </p>
+                            </div>
+                          </label>
+                          {(draft.posterAssetMode ?? "graphic-only") === "uploaded-hero" ? (
+                            <label className={styles.fullWidth}>
+                              <span>Foto propia para el poster local</span>
+                              <input type="file" name="heroImageFile" accept="image/*" onChange={handleHeroFileChange} />
+                              <small className={styles.inlineHint}>
+                                La imagen se ajusta y recorta automáticamente para la composición local del poster.
+                              </small>
+                            </label>
+                          ) : null}
                         </div>
                       ) : (
                         <div className={styles.generatedBody}>
+                          <div className={styles.selectionHint}>
+                            <strong>Flujo guiado IA</strong>
+                            <p>Primero escribe una sola frase. Luego el sistema la convierte en un brief editorial estructurado, arma un prompt maestro y con ese mismo prompt genera todas las propuestas que devuelva el diseñador para que elijas una.</p>
+                          </div>
                           <div className={styles.formGrid}>
-                            <label>
-                              <span>Asset mode</span>
-                              <select value={draft.posterAssetMode ?? "graphic-only"} onChange={(event) => updateDraft("posterAssetMode", event.target.value as VenueEventRecord["posterAssetMode"])}>
-                                {assetModeOptions.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                            <label className={styles.fullWidth}>
+                              <span>Frase del usuario para orientar a la IA</span>
+                              <textarea
+                                rows={3}
+                                value={aiDirectionNote}
+                                onChange={(event) => setAiDirectionNote(event.target.value)}
+                                placeholder="Ej. que se sienta como una noche de jazz elegante pero con energia joven y ganas de comprar el boleto."
+                              />
+                              <small className={styles.inlineHint}>Si lo dejas vacio, el sistema asume defaults solidos con base en el titulo, la fecha, el venue, el lineup y el genero.</small>
                             </label>
                             <label className={styles.fullWidth}>
-                              <span>Referencias / URLs base (una por línea)</span>
-                              <textarea rows={3} value={(draft.posterReferenceUrls ?? []).join("\n")} onChange={(event) => updateDraft("posterReferenceUrls", splitCommaList(event.target.value))} />
+                              <span>Brief editorial estructurado</span>
+                              <textarea rows={11} value={generatedEditorialBriefJson} readOnly />
+                              <small className={styles.inlineHint}>Aqui el sistema extrae lo explicito, infiere lo faltante, completa defaults de arte y decide el estilo recomendado antes de generar.</small>
+                            </label>
+                            <label className={styles.fullWidth}>
+                              <span>Prompt maestro que se enviara</span>
+                              <textarea rows={4} value={generatedAiPrompt} readOnly />
+                              <small className={styles.inlineHint}>Este es el unico prompt base. Con el se generan tres resultados, no tres prompts distintos.</small>
                             </label>
                           </div>
                           <div className={styles.wizardActions}>
                             <button type="button" className={styles.saveButton} onClick={generateAiPosterDirections} disabled={aiStatus.loading}>
                               {aiStatus.loading ? "Generando..." : "Generar propuestas IA"}
                             </button>
+                            {aiProposals.length > 0 ? (
+                              <button type="button" className={styles.previewLink} onClick={() => void clearTransientAiWorkspace()}>
+                                Borrar propuestas IA
+                              </button>
+                            ) : null}
                           </div>
+                          {aiProposals.length > 0 && !aiProposalsAreCurrent ? (
+                            <div className={styles.progressCard}>
+                              <small>Los datos del evento cambiaron despues de la ultima generacion. Vuelve a generar para obtener propuestas alineadas con el brief actual.</small>
+                            </div>
+                          ) : null}
                           {aiStatus.loading ? (
                             <div className={styles.progressCard}>
                               <div className={styles.progressBarTrack}>
@@ -1081,16 +1721,19 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                                 <button
                                   key={proposal.proposal_id}
                                   type="button"
-                                  className={styles.aiProposalCard}
-                                  onClick={() => {
-                                    updateDraft("posterArtDirection", proposal.design_storytelling);
-                                    updateDraft("posterReferenceUrls", [proposal.poster_url]);
-                                    updateDraft("posterAssetMode", "banana-pro");
-                                  }}
+                                  className={proposal.proposal_id === selectedAiProposalId ? styles.styleCardActive : styles.aiProposalCard}
+                                  onClick={() => setSelectedAiProposalId(proposal.proposal_id)}
                                 >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={proposal.poster_url} alt={proposal.style_title} className={styles.aiProposalThumb} />
+                                  <div className={styles.aiProposalMetaRow}>
+                                    {proposal.rank ? <span className={styles.aiProposalRank}>#{proposal.rank}</span> : null}
+                                    {proposal.recommendation_label ? <span className={styles.aiProposalBadge}>{proposal.recommendation_label}</span> : null}
+                                    {typeof proposal.total_score === "number" ? <span className={styles.aiProposalScore}>{proposal.total_score.toFixed(1)}/10</span> : null}
+                                  </div>
                                   <strong>{proposal.style_title}</strong>
+                                  {proposal.summary ? <span className={styles.aiProposalSummary}>{proposal.summary}</span> : null}
                                   <small>{proposal.design_storytelling}</small>
-                                  <span>{proposal.poster_url}</span>
                                 </button>
                               ))}
                             </div>
@@ -1312,29 +1955,33 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                     aiStatus.loading ? (
                       <div className={styles.previewPlaceholder}>
                         <strong>Generando propuestas IA...</strong>
-                        <p>El diseñador externo está construyendo opciones editoriales. Cuando termine, verás aquí las 3 propuestas para compararlas y elegir una.</p>
+                        <p>El diseñador externo está construyendo opciones editoriales. Cuando termine, verás aquí todas las propuestas devueltas por el servicio para compararlas y elegir una.</p>
                         <div className={styles.progressBarTrack}>
                           <div className={styles.progressBarFill} />
                         </div>
                       </div>
-                    ) : visibleAiProposals.length === 0 ? (
+                    ) : aiProposals.length === 0 ? (
                       <div className={styles.previewPlaceholder}>
                         <strong>Aún no hay posters IA cargados.</strong>
-                        <p>Configura el brief y usa “Generar propuestas IA”. Después podrás alternar entre las 3 propuestas y decidir cuál aplicar.</p>
+                        <p>Configura el brief y usa “Generar propuestas IA”. Después podrás revisar aquí todas las propuestas devueltas por el diseñador y decidir cuál aplicar.</p>
                       </div>
                     ) : (
                       <div className={styles.aiPreviewStage}>
-                        <div className={styles.aiProposalSwitch}>
-                          {visibleAiProposals.map((proposal, index) => {
+                        <div className={styles.aiPreviewOptionGrid}>
+                          {aiProposals.map((proposal, index) => {
                             const active = proposal.proposal_id === selectedAiProposal?.proposal_id;
                             return (
                               <button
                                 key={proposal.proposal_id}
                                 type="button"
-                                className={active ? styles.previewTabActive : styles.previewTab}
+                                className={active ? styles.aiPreviewOptionActive : styles.aiPreviewOption}
                                 onClick={() => setSelectedAiProposalId(proposal.proposal_id)}
                               >
-                                Opción {index + 1}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={proposal.poster_url} alt={proposal.style_title} className={styles.aiPreviewOptionImage} />
+                                <span>Opción {index + 1}</span>
+                                <strong>{proposal.style_title}</strong>
+                                {typeof proposal.total_score === "number" ? <small>{proposal.total_score.toFixed(1)}/10</small> : null}
                               </button>
                             );
                           })}
@@ -1351,7 +1998,30 @@ export function VenueWorkspace({ initialEvents }: VenueWorkspaceProps) {
                             </div>
                             <div className={styles.generatedBody}>
                               <strong>{selectedAiProposal.style_title}</strong>
+                              <div className={styles.aiSelectedMeta}>
+                                {selectedAiProposal.rank ? <span className={styles.aiProposalRank}>#{selectedAiProposal.rank}</span> : null}
+                                {selectedAiProposal.recommendation_label ? <span className={styles.aiProposalBadge}>{selectedAiProposal.recommendation_label}</span> : null}
+                                {typeof selectedAiProposal.total_score === "number" ? <span className={styles.aiProposalScore}>{selectedAiProposal.total_score.toFixed(1)}/10</span> : null}
+                              </div>
                               <p>{selectedAiProposal.design_storytelling}</p>
+                              {selectedAiProposal.summary ? <small className={styles.aiSelectedSummary}>{selectedAiProposal.summary}</small> : null}
+                              {selectedAiProposal.target_genres?.length ? (
+                                <div className={styles.aiTagRow}>
+                                  {selectedAiProposal.target_genres.map((genre) => (
+                                    <span key={genre} className={styles.aiTag}>
+                                      {genre}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {selectedAiProposal.warnings?.length ? (
+                                <div className={styles.aiWarningList}>
+                                  {selectedAiProposal.warnings.map((warning) => (
+                                    <small key={warning}>{warning}</small>
+                                  ))}
+                                </div>
+                              ) : null}
+                              <small>{hasAppliedSelectedAiProposal ? "Esta propuesta ya fue aplicada al handoff del evento." : "Selecciona y aplica esta propuesta para desbloquear el siguiente paso."}</small>
                             </div>
                             <div className={styles.wizardActions}>
                               <button type="button" className={styles.saveButton} onClick={applySelectedAiProposal}>
