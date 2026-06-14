@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/admin";
 import { getPosterDesignerSelectUrl } from "@/lib/poster-designer-api";
 
 function toPublicPosterUrl(apiUrl: string, relativeUrl: string) {
@@ -7,6 +8,12 @@ function toPublicPosterUrl(apiUrl: string, relativeUrl: string) {
 }
 
 export async function POST(request: Request) {
+  const session = await requireAdminSession();
+
+  if (!session) {
+    return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+  }
+
   const payload = await request.json();
   const endpoint = getPosterDesignerSelectUrl();
 

@@ -157,6 +157,8 @@ model Event {
   googleCalendarSyncStatus     GoogleCalendarSyncStatus  @default(NOT_LINKED)
   lastCalendarSyncedAt         DateTime?
   isPublished                  Boolean                   @default(false)
+  consolePayload               Json?
+  publishedAt                  DateTime?
   createdAt                    DateTime                  @default(now())
   updatedAt                    DateTime                  @updatedAt
   venue                        Venue                     @relation(fields: [venueId], references: [id], onDelete: Restrict, onUpdate: Cascade)

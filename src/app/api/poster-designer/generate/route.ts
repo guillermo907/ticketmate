@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/admin";
 import { getPosterDesignerCleanupUrl, getPosterDesignerGenerateUrl } from "@/lib/poster-designer-api";
 
 type LegacyGeneratePayload = {
@@ -134,7 +135,7 @@ function normalizeGenerateResponse(body: BackendGenerateResponse, endpoint: stri
       asset_id: asset.asset_id,
       style_title: concept?.style_title || asset.concept_id || `Poster ${index + 1}`,
       design_storytelling: concept?.design_storytelling || concept?.art_direction || "",
-      poster_url: toPublicPosterUrl(endpoint, asset.relative_url),
+      poster_url: asset.relative_url ? toPublicPosterUrl(endpoint, asset.relative_url) : "",
       relative_url: asset.relative_url,
       total_score: score?.total_score ?? null,
       rank: score?.rank ?? null,
@@ -194,6 +195,12 @@ function parseCleanupGroups(payload: { generation_id?: string; asset_ids?: strin
 }
 
 export async function POST(request: Request) {
+  const session = await requireAdminSession();
+
+  if (!session) {
+    return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+  }
+
   const payload = await request.json();
   const endpoint = getPosterDesignerGenerateUrl();
   const backendPayload = toBackendPayload(payload);
@@ -238,6 +245,12 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const session = await requireAdminSession();
+
+  if (!session) {
+    return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+  }
+
   const payload = await request.json();
   const endpoint = getPosterDesignerCleanupUrl();
   const cleanupGroups = parseCleanupGroups(payload);

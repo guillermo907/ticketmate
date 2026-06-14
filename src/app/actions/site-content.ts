@@ -7,7 +7,7 @@ import { getSiteContent, saveSiteContent } from "@/lib/content";
 import { deletePublicAsset, savePublicAsset } from "@/lib/storage";
 import { normalizeThemeForStorage } from "@/lib/theme-contrast";
 import { createWallpaperBuffer, extractThemeFromImageBuffer } from "@/lib/theme-image";
-import type { CvEducationItem, CvExperienceItem, CvProjectItem } from "@/lib/types";
+import type { CvEducationItem, CvExperienceItem, CvProjectItem, SiteTheme, ThemeRevision } from "@/lib/types";
 
 export type SaveState = {
   ok: boolean;
@@ -20,6 +20,24 @@ function ok(message: string): SaveState {
 
 function fail(message: string): SaveState {
   return { ok: false, message };
+}
+
+function themesMatch(a: SiteTheme, b: SiteTheme) {
+  return JSON.stringify(normalizeThemeForStorage(a)) === JSON.stringify(normalizeThemeForStorage(b));
+}
+
+function buildThemeHistory(history: ThemeRevision[] | undefined, previousTheme: SiteTheme, nextTheme: SiteTheme) {
+  if (themesMatch(previousTheme, nextTheme)) {
+    return history ?? [];
+  }
+
+  const snapshot: ThemeRevision = {
+    id: randomUUID(),
+    savedAt: new Date().toISOString(),
+    theme: normalizeThemeForStorage(previousTheme)
+  };
+
+  return [snapshot, ...(history ?? []).filter((entry) => !themesMatch(entry.theme, snapshot.theme))].slice(0, 2);
 }
 
 function revalidateSiteContent() {
@@ -263,13 +281,46 @@ export async function saveThemeSettingsAction(_previousState: SaveState, formDat
 
     await saveSiteContent({
       ...current,
-      theme: nextTheme
+      theme: nextTheme,
+      themeHistory: buildThemeHistory(current.themeHistory, current.theme, nextTheme)
     });
 
     revalidateSiteContent();
     return ok("Theme settings saved and applied.");
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Could not save theme settings.");
+  }
+}
+
+export async function restoreThemeRevisionAction(_previousState: SaveState, formData: FormData): Promise<SaveState> {
+  await requireAdmin();
+
+  try {
+    const revisionId = String(formData.get("revisionId") ?? "");
+    const current = await getSiteContent();
+    const revision = current.themeHistory?.find((entry) => entry.id === revisionId);
+
+    if (!revision) {
+      return fail("The selected theme revision is no longer available.");
+    }
+
+    const restoredTheme = normalizeThemeForStorage(revision.theme);
+    const nextHistory = buildThemeHistory(
+      current.themeHistory?.filter((entry) => entry.id !== revisionId),
+      current.theme,
+      restoredTheme
+    );
+
+    await saveSiteContent({
+      ...current,
+      theme: restoredTheme,
+      themeHistory: nextHistory
+    });
+
+    revalidateSiteContent();
+    return ok("Theme revision restored.");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Could not restore the saved theme revision.");
   }
 }
 

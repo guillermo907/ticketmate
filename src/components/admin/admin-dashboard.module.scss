@@ -1535,6 +1535,49 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
+.revisionList {
+  display: grid;
+  gap: .6rem;
+}
+
+.revisionCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .75rem .8rem;
+  border: 1px solid var(--admin-line);
+  border-radius: .75rem;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 78%),
+    color-mix(in srgb, var(--admin-panel-strong) 76%, transparent);
+}
+
+.revisionCard div {
+  display: grid;
+  gap: .12rem;
+}
+
+.revisionCard span,
+.revisionHint {
+  color: var(--admin-muted);
+  font-size: .76rem;
+}
+
+.revisionCard strong {
+  color: var(--admin-fg);
+  font-size: .9rem;
+}
+
+.revisionCard small {
+  color: var(--admin-muted);
+  font-size: .76rem;
+}
+
+.revisionCard button {
+  flex: 0 0 auto;
+}
+
 .success,
 .error { margin-top: .6rem; font-size: .88rem; }
 .success { color: #84ffc8; }

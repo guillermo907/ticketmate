@@ -15,6 +15,10 @@ export const eventVisualMotifIds = [
 
 export type EventVisualMotifId = (typeof eventVisualMotifIds)[number];
 
+export const ticketTemplateIds = ["glass-banner", "festival-pass", "ledger-stub", "night-band"] as const;
+
+export type TicketTemplateId = (typeof ticketTemplateIds)[number];
+
 export const posterVisibleFieldIds = [
   "venue",
   "date",
@@ -35,6 +39,176 @@ export type EventOperationalMoment = {
   id: string;
   label: string;
   time: string;
+};
+
+export type PosterTextOverlayMode = "none" | "editorial-band" | "corner-stamp" | "ticket-strip" | "full-frame";
+export type EventOperationMode = "auto" | "manual";
+export type PosterOverlayAnchor =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "middle-left"
+  | "middle-center"
+  | "middle-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+export type PosterOverlayCardStyle = "glass" | "solid" | "soft";
+export type PosterOverlayDensity = "compact" | "balanced" | "airy";
+export type PosterOverlayTypographyStyle = "display" | "editorial" | "mono";
+export type PosterOverlayViewport = "desktop" | "tablet" | "mobile";
+export type PosterOverlayLayout = {
+  heroAnchor?: PosterOverlayAnchor;
+  lineupAnchor?: PosterOverlayAnchor;
+  actionAnchor?: PosterOverlayAnchor;
+  storyAnchor?: PosterOverlayAnchor;
+  heroOffsetX?: number;
+  heroOffsetY?: number;
+  heroScale?: number;
+  heroScaleX?: number;
+  heroScaleY?: number;
+  heroBoxScale?: number;
+  heroBoxScaleX?: number;
+  heroBoxScaleY?: number;
+  heroRotation?: number;
+  heroOpacity?: number;
+  lineupOffsetX?: number;
+  lineupOffsetY?: number;
+  lineupScale?: number;
+  lineupScaleX?: number;
+  lineupScaleY?: number;
+  lineupBoxScale?: number;
+  lineupBoxScaleX?: number;
+  lineupBoxScaleY?: number;
+  lineupRotation?: number;
+  lineupOpacity?: number;
+  actionOffsetX?: number;
+  actionOffsetY?: number;
+  actionScale?: number;
+  actionScaleX?: number;
+  actionScaleY?: number;
+  actionBoxScale?: number;
+  actionBoxScaleX?: number;
+  actionBoxScaleY?: number;
+  actionRotation?: number;
+  actionOpacity?: number;
+  storyOffsetX?: number;
+  storyOffsetY?: number;
+  storyScale?: number;
+  storyScaleX?: number;
+  storyScaleY?: number;
+  storyBoxScale?: number;
+  storyBoxScaleX?: number;
+  storyBoxScaleY?: number;
+  storyRotation?: number;
+  storyOpacity?: number;
+  textAlign?: "left" | "center";
+  typographyStyle?: PosterOverlayTypographyStyle;
+  fontScale?: number;
+  elementScale?: number;
+  cardScale?: number;
+  density?: PosterOverlayDensity;
+  cardStyle?: PosterOverlayCardStyle;
+};
+export type PosterOverlayLayoutByViewport = Partial<Record<PosterOverlayViewport, PosterOverlayLayout>>;
+export type PosterOverlayLayoutConfig = PosterOverlayLayout | PosterOverlayLayoutByViewport;
+
+export type PosterAssetMode =
+  | "graphic-only"
+  | "uploaded-hero"
+  | "banana-pro"
+  | "pexels-editorial"
+  | "mixed-collage";
+
+export type EventPosterAssetStatus = "draft" | "published" | "archived";
+export type EventPosterOriginMode = "local" | "ai" | "upload";
+
+export type EventPosterAssetSnapshot = {
+  title: string;
+  summary: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  venueName: string;
+  venueAddress: string;
+  heroImage: string;
+  lineup: string[];
+  genre: string[];
+  designVariant?: EventInviteStyleId;
+  designTemplateId?: PosterTemplateId;
+  designMotifs?: EventVisualMotifId[];
+  posterVisibleFields?: PosterVisibleFieldId[];
+  posterArtDirection?: string;
+  posterReferenceUrls?: string[];
+  posterAssetMode?: PosterAssetMode;
+  posterTextOverlayMode?: PosterTextOverlayMode;
+  posterOverlayLayout?: PosterOverlayLayoutConfig;
+};
+
+export type EventPosterAsset = {
+  id: string;
+  kind: "poster";
+  url: string;
+  source: "generated" | "uploaded" | "materialized" | "legacy";
+  label: string;
+  status: EventPosterAssetStatus;
+  revision: number;
+  originMode?: EventPosterOriginMode;
+  provider?: string;
+  prompt?: string;
+  artDirection?: string;
+  assetMode?: PosterAssetMode;
+  overlayMode?: PosterTextOverlayMode;
+  templateId?: PosterTemplateId;
+  snapshot?: EventPosterAssetSnapshot;
+  selectedAt?: string;
+  publishedAt?: string;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EventTicketAsset = {
+  id: string;
+  kind: "ticket";
+  source: "composite";
+  label: string;
+  posterAssetId?: string;
+  templateId: TicketTemplateId;
+  rendererId: EventTicketDesign["rendererId"];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EventTicketDesign = {
+  version: 1;
+  status: "completed";
+  generatedAt: string;
+  designer: "ticket-designer-core";
+  templateId: TicketTemplateId;
+  rendererId: "glass-banner-card" | "festival-pass-card" | "ledger-stub-card" | "night-band-card";
+  variant: EventInviteStyleId;
+  shellTheme: {
+    background: string;
+    foreground: string;
+    accent: string;
+    accentAlt: string;
+    muted: string;
+    panel: string;
+    panelStrong: string;
+    line: string;
+    ink: string;
+  };
+  layout: {
+    orientation: "horizontal" | "vertical";
+    density: "compact" | "balanced";
+    qrPlacement: "right" | "bottom";
+  };
+  handoff: {
+    componentId: "event-ticket-card";
+    summary: string;
+    developerNotes: string[];
+  };
 };
 
 export type EventInviteStyleDefinition = {
@@ -143,11 +317,18 @@ export type VenueEventRecord = {
   heroImage: string;
   designVariant?: EventInviteStyleId;
   designTemplateId?: PosterTemplateId;
+  ticketTemplateId?: TicketTemplateId;
   designMotifs?: EventVisualMotifId[];
   posterVisibleFields?: PosterVisibleFieldId[];
   posterArtDirection?: string;
   posterReferenceUrls?: string[];
-  posterAssetMode?: "graphic-only" | "uploaded-hero" | "banana-pro" | "pexels-editorial" | "mixed-collage";
+  posterAssetMode?: PosterAssetMode;
+  posterTextOverlayMode?: PosterTextOverlayMode;
+  posterOverlayLayout?: PosterOverlayLayoutConfig;
+  posterAssets?: EventPosterAsset[];
+  activePosterAssetId?: string;
+  ticketAssets?: EventTicketAsset[];
+  activeTicketAssetId?: string;
   doorTime: string;
   soundcheckTime: string;
   operationalMoments: EventOperationalMoment[];
@@ -156,12 +337,16 @@ export type VenueEventRecord = {
   artistPayoutRate: number;
   capacity: number;
   soldCount: number;
+  operationMode?: EventOperationMode;
   lineup: string[];
   genre: string[];
   isPublished: boolean;
   posterDesign?: EventPosterDesign;
   draftPoster?: EventPosterDesign;
   publishedPoster?: EventPosterDesign;
+  ticketDesign?: EventTicketDesign;
+  draftTicket?: EventTicketDesign;
+  publishedTicket?: EventTicketDesign;
   publishedAt?: string;
   createdAt: string;
   updatedAt: string;

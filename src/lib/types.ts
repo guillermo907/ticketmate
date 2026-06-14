@@ -77,6 +77,18 @@ export type ThemeSettings = {
   contrast: "soft" | "balanced" | "high" | "editorial";
   bannerStyle?: BannerStyle;
   surface?: ThemeSurfaceSettings;
+  applyVenueConsoleWallpaper?: boolean;
+  applyEventPosterConsoleWallpaper?: boolean;
+};
+
+export type SiteTheme = ThemeSettings & {
+  light: ThemeSettings;
+};
+
+export type ThemeRevision = {
+  id: string;
+  savedAt: string;
+  theme: SiteTheme;
 };
 
 export type HomeSectionText = {
@@ -135,9 +147,8 @@ export type SiteContent = {
   testimonials?: TestimonialItem[];
   seo?: SeoContent;
   socialLinks?: SocialLinks;
-  theme: ThemeSettings & {
-    light: ThemeSettings;
-  };
+  theme: SiteTheme;
+  themeHistory?: ThemeRevision[];
   locales?: {
     es?: LocalizedSiteContent;
   };

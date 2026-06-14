@@ -151,29 +151,87 @@
     "spotify": "https://spotify.com/"
   },
   "theme": {
-    "accent": "#ff4fb3",
-    "accentAlt": "#46d2ff",
-    "background": "#101a33",
-    "backgroundImage": "/uploads/cv-wallpaper-d8dc4df6-6283-49ff-a115-9a6142a90abe.jpg?v=1779241087854",
+    "accent": "#23c78b",
+    "accentAlt": "#7679c6",
+    "background": "#403584",
+    "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
     "contrast": "soft",
     "bannerStyle": "blurred",
     "surface": {
-      "wallpaperVisibility": 30,
-      "surfaceVisibility": 30,
+      "wallpaperVisibility": 50,
+      "surfaceVisibility": 81,
       "strongScrim": 88,
       "mediumScrim": 56,
-      "borderRadius": 16,
+      "borderRadius": 6,
       "borderWidth": 1,
-      "blurStrength": 0
+      "blurStrength": 4
     },
     "light": {
-      "accent": "#0f9d7b",
-      "accentAlt": "#176d97",
-      "background": "#f4f6f5",
-      "backgroundImage": "/uploads/cv-wallpaper-d8dc4df6-6283-49ff-a115-9a6142a90abe.jpg?v=1779241087854",
+      "accent": "#3b20a2",
+      "accentAlt": "#6c307e",
+      "background": "#f4f4f6",
+      "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
       "contrast": "editorial"
     }
   },
+  "themeHistory": [
+    {
+      "id": "5cd19d9b-15e9-4aec-ae2c-f46c9e880cbb",
+      "savedAt": "2026-06-14T19:41:33.170Z",
+      "theme": {
+        "accent": "#23c78b",
+        "accentAlt": "#7679c6",
+        "background": "#403584",
+        "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
+        "contrast": "soft",
+        "bannerStyle": "blurred",
+        "surface": {
+          "wallpaperVisibility": 30,
+          "surfaceVisibility": 81,
+          "strongScrim": 88,
+          "mediumScrim": 56,
+          "borderRadius": 6,
+          "borderWidth": 1,
+          "blurStrength": 4
+        },
+        "light": {
+          "accent": "#3b20a2",
+          "accentAlt": "#6c307e",
+          "background": "#f4f4f6",
+          "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
+          "contrast": "editorial"
+        }
+      }
+    },
+    {
+      "id": "fafe974a-53b2-4ec6-a89d-690c91828cd9",
+      "savedAt": "2026-06-14T19:39:20.545Z",
+      "theme": {
+        "accent": "#23c78b",
+        "accentAlt": "#7679c6",
+        "background": "#411b24",
+        "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
+        "contrast": "soft",
+        "bannerStyle": "blurred",
+        "surface": {
+          "wallpaperVisibility": 30,
+          "surfaceVisibility": 81,
+          "strongScrim": 88,
+          "mediumScrim": 56,
+          "borderRadius": 6,
+          "borderWidth": 1,
+          "blurStrength": 4
+        },
+        "light": {
+          "accent": "#3b20a2",
+          "accentAlt": "#6c307e",
+          "background": "#f4f4f6",
+          "backgroundImage": "/uploads/cv-wallpaper-ca55a507-2d02-4e3b-8687-7d5090d42733.jpg?v=1781465899561",
+          "contrast": "editorial"
+        }
+      }
+    }
+  ],
   "locales": {
     "es": {
       "siteTitle": "Foro GDL",

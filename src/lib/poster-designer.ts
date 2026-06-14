@@ -6,6 +6,7 @@ import {
   type EventVisualMotifId,
   type VenueEventRecord,
 } from "./event-types";
+import { normalizeRenderShellTheme } from "./design-accessibility";
 
 export type EventPosterDesign = {
   version: 1;
@@ -294,7 +295,7 @@ function buildPosterShellTheme(
   variant: EventInviteStyleId,
 ): EventPosterDesign["shellTheme"] {
   if (templateId === "festival-ticket") {
-    return {
+    return normalizeRenderShellTheme({
       background: "#143463",
       foreground: "#ffd78e",
       accent: "#f0c265",
@@ -304,11 +305,11 @@ function buildPosterShellTheme(
       panel: "#183865",
       panelStrong: "#1d4277",
       ink: "#122c58",
-    };
+    });
   }
 
   if (rendererId === "midnight-flyer-site" || variant === "club-grid") {
-    return {
+    return normalizeRenderShellTheme({
       background: "#070911",
       foreground: "#f6f3ff",
       accent: "#62f4ff",
@@ -318,11 +319,11 @@ function buildPosterShellTheme(
       panel: "#0d1322",
       panelStrong: "#121a2f",
       ink: "#060611",
-    };
+    });
   }
 
   if (rendererId === "paper-cut-collage-site") {
-    return {
+    return normalizeRenderShellTheme({
       background: "#f5ddaf",
       foreground: "#18304c",
       accent: "#dfad5b",
@@ -332,11 +333,11 @@ function buildPosterShellTheme(
       panel: "#f7ead0",
       panelStrong: "#f3dfbc",
       ink: "#18304c",
-    };
+    });
   }
 
   if (rendererId === "brass-marquee-site") {
-    return {
+    return normalizeRenderShellTheme({
       background: "#120f1a",
       foreground: "#f4dfbb",
       accent: "#eab657",
@@ -346,11 +347,11 @@ function buildPosterShellTheme(
       panel: "#1a1523",
       panelStrong: "#241d31",
       ink: "#120f1a",
-    };
+    });
   }
 
   if (rendererId === "signal-matrix-site") {
-    return {
+    return normalizeRenderShellTheme({
       background: "#090f1f",
       foreground: "#f6f9ff",
       accent: "#66efff",
@@ -360,10 +361,10 @@ function buildPosterShellTheme(
       panel: "#10192c",
       panelStrong: "#15213a",
       ink: "#070911",
-    };
+    });
   }
 
-  return {
+  return normalizeRenderShellTheme({
     background: "#5b2a18",
     foreground: "#fff3de",
     accent: "#efb460",
@@ -373,7 +374,7 @@ function buildPosterShellTheme(
     panel: "#824124",
     panelStrong: "#a2522c",
     ink: "#2e160d",
-  };
+  });
 }
 
 function buildDeveloperNotes(

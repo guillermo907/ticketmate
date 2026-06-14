@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/admin";
 
 type CopyAssistField = "summary" | "description" | "genre";
 
@@ -86,6 +87,12 @@ function buildPrompt({ field, title = "", lineup = "", venue = "", genres = "" }
 }
 
 export async function POST(request: Request) {
+  const session = await requireAdminSession();
+
+  if (!session) {
+    return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   let body: CopyAssistRequest = {};
 

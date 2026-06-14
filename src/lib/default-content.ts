@@ -145,6 +145,7 @@ export const defaultContent: SiteContent = {
       contrast: "editorial"
     }
   },
+  themeHistory: [],
   locales: {
     es: {
       siteTitle: "Foro GDL",

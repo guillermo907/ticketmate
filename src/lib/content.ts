@@ -3,12 +3,21 @@ import path from "node:path";
 import { get, put } from "@vercel/blob";
 import { defaultContent } from "./default-content";
 import { assertWritableStorage, shouldUseBlobStorage } from "./storage";
+import { normalizeThemeForStorage } from "./theme-contrast";
 import type { SiteContent } from "./types";
 
 const contentPath = path.join(process.cwd(), "data", "site-content.json");
 const blobKey = "site-content.json";
 
 function mergeContent(raw: Partial<SiteContent>): SiteContent {
+  const themeHistory = Array.isArray(raw.themeHistory)
+    ? raw.themeHistory.slice(0, 2).map((revision) => ({
+        id: String(revision?.id ?? ""),
+        savedAt: String(revision?.savedAt ?? ""),
+        theme: normalizeThemeForStorage(revision?.theme ?? defaultContent.theme)
+      }))
+    : defaultContent.themeHistory;
+
   return {
     ...defaultContent,
     ...raw,
@@ -33,6 +42,7 @@ function mergeContent(raw: Partial<SiteContent>): SiteContent {
         ...raw.theme?.light
       }
     },
+    themeHistory,
     locales: {
       ...defaultContent.locales,
       ...raw.locales,

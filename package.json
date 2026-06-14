@@ -9,11 +9,16 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",
+    "@types/howler": "^2.2.13",
     "@vercel/blob": "^2.3.3",
+    "howler": "^2.2.4",
     "html2canvas": "^1.4.1",
     "jimp": "^1.6.1",
     "jspdf": "^4.2.1",
@@ -26,6 +31,7 @@
     "sass": "^1.93.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.1",
     "@types/react": "^19.2.2",

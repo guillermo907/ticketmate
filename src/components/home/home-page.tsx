@@ -4,7 +4,7 @@ import type { SiteContent } from "@/lib/types";
 import { applyThemeVariables } from "@/lib/apply-theme-variables";
 import { normalizeSiteTheme, themeCssVariables } from "@/lib/theme-contrast";
 import Link from "next/link";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore, type CSSProperties } from "react";
 import { ThemeModeToggle } from "./theme-mode-toggle";
 import styles from "./home-page.module.scss";
 
@@ -19,6 +19,12 @@ type FlowCard = {
   title: string;
   body: string;
   points: string[];
+};
+
+type ProgramEntry = {
+  time: string;
+  title: string;
+  body: string;
 };
 
 type NavItem = {
@@ -131,7 +137,6 @@ export function HomePage({ content }: HomePageProps) {
           email: "Email"
         };
 
-  const wallpaper = content.theme.backgroundImage || content.theme.light.backgroundImage;
   const socialEntries = Object.entries(localized.socialLinks ?? {}).filter(([, value]) => Boolean(value));
   const primaryCtaHref = locale === "es" ? "/como-funciona" : "/como-funciona";
   const secondaryCtaHref = "/venue";
@@ -206,6 +211,14 @@ export function HomePage({ content }: HomePageProps) {
           ["After the show", "The ledger consolidates and payout preparation begins."]
         ];
 
+  const programEntries: ProgramEntry[] = flowCards.map((card, index) => ({
+    time: ["18:30", "20:00", "22:00", "01:00"][index] ?? card.stage,
+    title: card.title,
+    body: card.body
+  }));
+
+  const posterModules = (localized.services ?? []).slice(0, 3);
+
   const navItems: NavItem[] = [
     { href: "#flows", label: labels.flows, tone: "flows" },
     { href: "#modules", label: labels.modules, tone: "modules" },
@@ -222,7 +235,6 @@ export function HomePage({ content }: HomePageProps) {
       data-theme-scope
       style={
         {
-          ...(wallpaper ? { "--cv-wallpaper": `url(${wallpaper})` } : {}),
           "--theme-wallpaper-visibility": `${content.theme.surface?.wallpaperVisibility ?? 30}%`,
           "--theme-surface-visibility": `${content.theme.surface?.surfaceVisibility ?? 30}%`,
           "--theme-strong-scrim": `${content.theme.surface?.strongScrim ?? 88}%`,
@@ -230,7 +242,7 @@ export function HomePage({ content }: HomePageProps) {
           "--theme-border-radius": `${content.theme.surface?.borderRadius ?? 16}px`,
           "--theme-border-width": `${content.theme.surface?.borderWidth ?? 1}px`,
           "--theme-blur-strength": `${content.theme.surface?.blurStrength ?? 10}px`
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       <nav className={styles.nav}>
@@ -259,12 +271,6 @@ export function HomePage({ content }: HomePageProps) {
       </nav>
 
       <section className={styles.hero} id="top">
-        {wallpaper ? (
-          <div className={styles.wallpaperBanner} aria-hidden="true">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={wallpaper} alt="" />
-          </div>
-        ) : null}
         <div className={styles.heroCopy}>
           <p className={styles.kicker}>{localized.subtitle}</p>
           <h1>{localized.cv.fullName}</h1>
@@ -280,46 +286,26 @@ export function HomePage({ content }: HomePageProps) {
           </div>
         </div>
 
-        <aside className={styles.operatorBoard}>
-          <div className={styles.boardHeader}>
-            <p>{labels.quickView}</p>
-            <strong>Tonight&apos;s operating stack</strong>
+        <aside className={styles.programPoster} aria-label={labels.quickView}>
+          <div className={styles.posterMasthead}>
+            <span>{localized.siteTitle}</span>
+            <strong>{locale === "es" ? "Agenda viva" : "Live agenda"}</strong>
           </div>
-          <div className={styles.boardGrid}>
-            <article>
-              <span>Fee por ticket</span>
-              <strong>$15 MXN</strong>
-              <small>Se suma al checkout del público.</small>
-            </article>
-            <article>
-              <span>Fee payout</span>
-              <strong>1.5%</strong>
-              <small>Se descuenta solo en payout automatizado.</small>
-            </article>
-            <article>
-              <span>Mobile first</span>
-              <strong>4G-ready</strong>
-              <small>Feed cacheado y checkout defensivo.</small>
-            </article>
-            <article>
-              <span>Operación</span>
-              <strong>1 panel</strong>
-              <small>Evento, artista, boletos y settlement juntos.</small>
-            </article>
+          <div className={styles.posterTitle}>
+            <span>{locale === "es" ? "Esta noche" : "Tonight"}</span>
+            <b>{locale === "es" ? "del poster al sold out" : "from poster to sold out"}</b>
           </div>
-          <div className={styles.boardStream}>
-            <div>
-              <b>18:30</b>
-              <span>Soundcheck bloqueado</span>
-            </div>
-            <div>
-              <b>20:00</b>
-              <span>Landing activa + tickets live</span>
-            </div>
-            <div>
-              <b>22:00</b>
-              <span>Check-in QR + ledger corriendo</span>
-            </div>
+          <div className={styles.posterLineup}>
+            {programEntries.slice(0, 3).map((entry) => (
+              <div key={`${entry.time}-${entry.title}`}>
+                <span>{entry.time}</span>
+                <strong>{entry.title}</strong>
+              </div>
+            ))}
+          </div>
+          <div className={styles.posterFoot}>
+            <span>{locale === "es" ? "Boletos, acceso y liquidación" : "Tickets, access, settlement"}</span>
+            <Link href="/venue">{labels.venueConsole}</Link>
           </div>
         </aside>
       </section>
@@ -327,19 +313,20 @@ export function HomePage({ content }: HomePageProps) {
       <section className={styles.flowSection} id="flows">
         <div className={styles.sectionHeading}>
           <p>{labels.flows}</p>
-          <h2>{locale === "es" ? "Aquí sí se entiende quién hace qué" : "A clearer system of who does what"}</h2>
+          <h2>
+            {locale === "es"
+              ? "Una noche clara para público, staff y artistas"
+              : "A clear night for guests, staff, and artists"}
+          </h2>
         </div>
-        <div className={styles.flowGrid}>
-          {flowCards.map((card) => (
-            <article key={card.stage} className={styles.flowCard}>
-              <span>{card.stage}</span>
-              <h3>{card.title}</h3>
-              <p>{card.body}</p>
-              <ul>
-                {card.points.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
+        <div className={styles.programList}>
+          {programEntries.map((entry) => (
+            <article key={`${entry.time}-${entry.title}`} className={styles.programRow}>
+              <span>{entry.time}</span>
+              <div>
+                <h3>{entry.title}</h3>
+                <p>{entry.body}</p>
+              </div>
             </article>
           ))}
         </div>
@@ -350,19 +337,18 @@ export function HomePage({ content }: HomePageProps) {
           <p>{labels.modules}</p>
           <h2>{localized.servicesIntro}</h2>
         </div>
-        <div className={styles.orchestrationGrid}>
-          <div className={styles.moduleColumn}>
-            {(localized.services ?? []).map((service) => (
-              <article key={`${service.eyebrow}-${service.title}`} className={styles.moduleCard}>
-                <span>{service.eyebrow}</span>
-                <h3>{service.title}</h3>
-                <p>{service.description}</p>
-              </article>
-            ))}
-          </div>
-
-          <article className={styles.railCard}>
-            <p>{locale === "es" ? "Timeline del sistema" : "System timeline"}</p>
+        <div className={styles.posterGrid}>
+          {posterModules.map((service, index) => (
+            <article key={`${service.eyebrow}-${service.title}`} className={styles.posterTile} data-index={index}>
+              <span>{service.eyebrow}</span>
+              <h3>{service.title}</h3>
+              <p>{service.description}</p>
+            </article>
+          ))}
+        </div>
+        <div className={styles.editorialSplit}>
+          <article className={styles.timelineEditorial}>
+            <p>{locale === "es" ? "Ritmo operativo" : "Operational rhythm"}</p>
             <div className={styles.railStack}>
               {orchestrationRail.map(([title, body]) => (
                 <div key={title} className={styles.railItem}>
@@ -373,7 +359,7 @@ export function HomePage({ content }: HomePageProps) {
             </div>
           </article>
 
-          <article className={styles.monetizationCard}>
+          <article className={styles.monetizationEditorial}>
             <p>{labels.monetization}</p>
             <h3>{locale === "es" ? "Modelo claro para el venue" : "A clear venue business model"}</h3>
             <div className={styles.moneyRows}>
@@ -417,31 +403,22 @@ export function HomePage({ content }: HomePageProps) {
             </div>
           </article>
           <article className={styles.workspacePreview}>
-            <div className={styles.previewTopbar}>
-              <span>Event Composer</span>
-              <i />
-              <i />
-              <i />
+            <div className={styles.previewIssue}>
+              <span>{locale === "es" ? "Venue console" : "Venue console"}</span>
+              <strong>{locale === "es" ? "Control cuando hace falta, no antes." : "Control when it matters, not before."}</strong>
             </div>
             <div className={styles.previewBody}>
-              <div className={styles.previewColumn}>
-                <strong>{locale === "es" ? "Evento" : "Event"}</strong>
-                <span>Midnight Cumbia Systems</span>
-                <span>{locale === "es" ? "Aforo: 320" : "Capacity: 320"}</span>
-                <span>{locale === "es" ? "Base: $280 MXN" : "Base: $280 MXN"}</span>
-              </div>
-              <div className={styles.previewColumn}>
-                <strong>{locale === "es" ? "Checkout" : "Checkout"}</strong>
-                <span>{locale === "es" ? "Cargo consumidor: $15" : "Consumer fee: $15"}</span>
-                <span>{locale === "es" ? "Estado: published" : "State: published"}</span>
-                <span>{locale === "es" ? "QR: ready" : "QR: ready"}</span>
-              </div>
-              <div className={styles.previewColumn}>
-                <strong>{locale === "es" ? "Settlement" : "Settlement"}</strong>
-                <span>{locale === "es" ? "Venue neto: visible" : "Venue net: visible"}</span>
-                <span>{locale === "es" ? "Artista neto: visible" : "Artist net: visible"}</span>
-                <span>{locale === "es" ? "Ledger: locked" : "Ledger: locked"}</span>
-              </div>
+              {[
+                [locale === "es" ? "Evento" : "Event", "Midnight Cumbia Systems", locale === "es" ? "Aforo 320" : "Capacity 320"],
+                ["Checkout", locale === "es" ? "+$15 consumidor" : "+$15 consumer", "QR ready"],
+                ["Settlement", locale === "es" ? "Ledger cerrado" : "Ledger locked", locale === "es" ? "Payout visible" : "Payout visible"]
+              ].map(([title, first, second]) => (
+                <div className={styles.previewColumn} key={title}>
+                  <strong>{title}</strong>
+                  <span>{first}</span>
+                  <span>{second}</span>
+                </div>
+              ))}
             </div>
           </article>
         </div>
@@ -451,7 +428,7 @@ export function HomePage({ content }: HomePageProps) {
         <section className={styles.testimonialsSection}>
           <div className={styles.sectionHeading}>
             <p>Feedback</p>
-            <h2>{locale === "es" ? "Se siente como producto, no como demo" : "This now reads like a product"}</h2>
+            <h2>{locale === "es" ? "Confianza sin verse corporativo" : "Trust without feeling corporate"}</h2>
           </div>
           <div className={styles.testimonialGrid}>
             {localized.testimonials.map((item) => (
@@ -497,7 +474,6 @@ export function HomePagePreview({
   content: SiteContent;
   viewport: "desktop" | "tablet" | "mobile";
 }) {
-  const wallpaper = content.theme.backgroundImage || content.theme.light.backgroundImage;
   const previewFlowCards = (content.services ?? []).slice(0, 2);
   const previewTheme = normalizeSiteTheme(content.theme);
 
@@ -521,7 +497,6 @@ export function HomePagePreview({
           "--panel": previewTheme.panel,
           "--panel-strong": previewTheme.panelStrong,
           "--ink": previewTheme.ink,
-          ...(wallpaper ? { "--cv-wallpaper": `url(${wallpaper})` } : {}),
           "--theme-wallpaper-visibility": `${content.theme.surface?.wallpaperVisibility ?? 30}%`,
           "--theme-surface-visibility": `${content.theme.surface?.surfaceVisibility ?? 30}%`,
           "--theme-strong-scrim": `${content.theme.surface?.strongScrim ?? 88}%`,
@@ -529,7 +504,7 @@ export function HomePagePreview({
           "--theme-border-radius": `${content.theme.surface?.borderRadius ?? 16}px`,
           "--theme-border-width": `${content.theme.surface?.borderWidth ?? 1}px`,
           "--theme-blur-strength": `${content.theme.surface?.blurStrength ?? 10}px`
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       <nav className={styles.nav}>
@@ -545,12 +520,6 @@ export function HomePagePreview({
       </nav>
 
       <section className={styles.hero}>
-        {wallpaper ? (
-          <div className={styles.wallpaperBanner} aria-hidden="true">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={wallpaper} alt="" />
-          </div>
-        ) : null}
         <div className={styles.heroCopy}>
           <p className={styles.kicker}>{content.subtitle}</p>
           <h1>{content.cv.fullName}</h1>
@@ -562,32 +531,22 @@ export function HomePagePreview({
           </div>
         </div>
 
-        <aside className={styles.operatorBoard}>
-          <div className={styles.boardHeader}>
-            <p>Quick view</p>
-            <strong>Tonight&apos;s operating stack</strong>
+        <aside className={styles.programPoster}>
+          <div className={styles.posterMasthead}>
+            <span>{content.siteTitle}</span>
+            <strong>Live agenda</strong>
           </div>
-          <div className={styles.boardGrid}>
-            <article>
-              <span>Fee por ticket</span>
-              <strong>$15 MXN</strong>
-              <small>Se suma al checkout del público.</small>
-            </article>
-            <article>
-              <span>Mobile first</span>
-              <strong>4G-ready</strong>
-              <small>Feed cacheado y checkout defensivo.</small>
-            </article>
+          <div className={styles.posterTitle}>
+            <span>Tonight</span>
+            <b>from poster to sold out</b>
           </div>
-          <div className={styles.boardStream}>
-            <div>
-              <b>20:00</b>
-              <span>Landing activa + tickets live</span>
-            </div>
-            <div>
-              <b>22:00</b>
-              <span>Check-in QR + ledger corriendo</span>
-            </div>
+          <div className={styles.posterLineup}>
+            {previewFlowCards.map((service, index) => (
+              <div key={service.title}>
+                <span>{index === 0 ? "20:00" : "22:00"}</span>
+                <strong>{service.title}</strong>
+              </div>
+            ))}
           </div>
         </aside>
       </section>
@@ -597,9 +556,9 @@ export function HomePagePreview({
           <p>Modules</p>
           <h2>{content.servicesIntro}</h2>
         </div>
-        <div className={styles.flowGrid}>
+        <div className={styles.posterGrid}>
           {previewFlowCards.map((service) => (
-            <article key={service.title} className={styles.flowCard}>
+            <article key={service.title} className={styles.posterTile}>
               <span>{service.eyebrow}</span>
               <h3>{service.title}</h3>
               <p>{service.description}</p>
@@ -614,11 +573,9 @@ export function HomePagePreview({
             <p>{content.bioText}</p>
           </article>
           <article className={styles.workspacePreview}>
-            <div className={styles.previewTopbar}>
-              <span>Event Composer</span>
-              <i />
-              <i />
-              <i />
+            <div className={styles.previewIssue}>
+              <span>Venue console</span>
+              <strong>Control when it matters.</strong>
             </div>
             <div className={styles.previewBody}>
               <div className={styles.previewColumn}>

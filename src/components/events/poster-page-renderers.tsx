@@ -1,5 +1,10 @@
 import type { VenueEventRecord } from "@/lib/event-types";
 import type { EventPosterDesign } from "@/lib/poster-designer";
+import {
+  resolvePosterCompositeRenderModel,
+  resolvePosterRuntimeEvent as resolvePosterRuntimeEventShared,
+} from "@/lib/event-presentation";
+import { GeneratedPosterComposite } from "@/components/events/generated-poster-composite";
 import styles from "@/app/events/[slug]/page.module.scss";
 
 type EventData = VenueEventRecord;
@@ -19,8 +24,14 @@ const defaultPosterVisibleFields = [
 ] as const;
 
 function getPublishedPosterAssetUrl(event: EventData) {
-  return event.posterReferenceUrls?.[0] ?? "";
+  return (
+    event.posterAssets?.find((asset) => asset.id === event.activePosterAssetId)?.url ??
+    event.posterReferenceUrls?.[0] ??
+    ""
+  );
 }
+
+export const resolvePosterRuntimeEvent = resolvePosterRuntimeEventShared;
 
 function formatTime(date: string) {
   return new Intl.DateTimeFormat("es-MX", {
@@ -54,42 +65,26 @@ function GeneratedImagePoster({
   event: EventData;
   relatedEvents: RelatedEvent[];
 }) {
-  const posterAssetUrl = getPublishedPosterAssetUrl(event);
+  const posterAsset = event.posterAssets?.find((asset) => asset.id === event.activePosterAssetId);
+  const posterModel = resolvePosterCompositeRenderModel(event, {
+    posterAsset,
+    posterUrl: posterAsset?.url ?? getPublishedPosterAssetUrl(event),
+  });
 
-  if (!posterAssetUrl) {
+  if (!posterModel.posterUrl) {
     return null;
   }
 
   return (
-    <article className={`${styles.posterSite} ${styles.generatedImagePosterSite}`}>
-      <div className={styles.generatedImageStage}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={posterAssetUrl} alt={`Poster oficial de ${event.title}`} className={styles.generatedImagePoster} />
-      </div>
-      <div className={styles.generatedImageDock}>
-        <div className={styles.generatedImageMeta}>
-          <span>{event.venueName}</span>
-          <strong>{event.title}</strong>
-          <small>
-            {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.startsAt))}
-          </small>
-        </div>
-        <div className={styles.generatedImageActions}>
-          <a className={styles.buyButton} href={`/checkout?event=${event.slug}`}>
-            COMPRAR BOLETO
-          </a>
-          {relatedEvents.length > 0 ? (
-            <div className={styles.relatedLinks}>
-              {relatedEvents.map((item) => (
-                <a key={item.slug} href={`/events/${item.slug}`}>
-                  {item.title}
-                </a>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </article>
+    <GeneratedPosterComposite
+      event={posterModel.event}
+      posterUrl={posterModel.posterUrl}
+      relatedEvents={relatedEvents}
+      mode="page"
+      viewport="desktop"
+      overlayMode={posterModel.overlayMode}
+      artworkFit={posterModel.artworkFit}
+    />
   );
 }
 
@@ -677,23 +672,25 @@ export function renderPosterPage(
   posterDesign: EventPosterDesign,
   relatedEvents: RelatedEvent[],
 ) {
-  if (getPublishedPosterAssetUrl(event)) {
-    return <GeneratedImagePoster event={event} relatedEvents={relatedEvents} />;
+  const runtimeEvent = resolvePosterRuntimeEvent(event);
+
+  if (getPublishedPosterAssetUrl(runtimeEvent)) {
+    return <GeneratedImagePoster event={runtimeEvent} relatedEvents={relatedEvents} />;
   }
 
   switch (posterDesign.rendererId) {
     case "festival-ticket-site":
-      return <FestivalTicketPoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <FestivalTicketPoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
     case "brass-marquee-site":
-      return <BrassMarqueePoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <BrassMarqueePoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
     case "midnight-flyer-site":
-      return <MidnightFlyerPoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <MidnightFlyerPoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
     case "paper-cut-collage-site":
-      return <PaperCutCollagePoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <PaperCutCollagePoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
     case "signal-matrix-site":
-      return <SignalMatrixPoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <SignalMatrixPoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
     case "sunburst-billboard-site":
     default:
-      return <SunburstPoster event={event} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
+      return <SunburstPoster event={runtimeEvent} posterDesign={posterDesign} relatedEvents={relatedEvents} />;
   }
 }

@@ -1,0 +1,297 @@
+.ticket {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  color: var(--ticket-foreground, #f7f3eb);
+  background: var(--ticket-background, #0f1624);
+  border: 1px solid var(--ticket-line, rgba(255, 255, 255, 0.12));
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.festival-pass,
+.ledger-stub,
+.night-band,
+.glass-banner {
+  position: relative;
+}
+
+.glass-banner {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(13rem, 0.9fr);
+  gap: 1rem;
+  padding: 1.1rem;
+  background:
+    linear-gradient(115deg, rgba(3, 18, 20, 0.34), rgba(16, 18, 28, 0.74)),
+    var(--ticket-background, #121923);
+}
+
+.festival-pass {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  grid-template-columns: 1.1fr 0.64fr;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--ticket-accent, #ff5bbd) 12%, transparent), transparent 55%),
+    var(--ticket-background, #0f1624);
+}
+
+.ledger-stub {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  grid-template-columns: 1fr 0.42fr;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--ticket-panel, #fff7eb) 88%, transparent), color-mix(in srgb, var(--ticket-panelStrong, #f0e3ca) 92%, transparent)),
+    var(--ticket-background, #f4ead3);
+}
+
+.night-band {
+  aspect-ratio: 9 / 16;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), color-mix(in srgb, var(--ticket-accent, #8bd8ff) 12%, transparent)),
+    var(--ticket-background, #071018);
+}
+
+.art,
+.overlay,
+.grain {
+  position: absolute;
+  inset: 0;
+}
+
+.art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.04) contrast(1.02) brightness(0.82);
+}
+
+.overlay {
+  background:
+    linear-gradient(135deg, rgba(6, 9, 18, 0.26), rgba(6, 9, 18, 0.68)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--ticket-accentAlt, #8bd8ff) 20%, transparent), transparent 26%);
+}
+
+.grain {
+  opacity: 0.18;
+  mix-blend-mode: soft-light;
+  background-image:
+    radial-gradient(circle at 18% 24%, rgba(255,255,255,0.18) 0 1px, transparent 1px),
+    radial-gradient(circle at 72% 42%, rgba(255,255,255,0.1) 0 1px, transparent 1px);
+  background-size: 16px 16px, 22px 22px;
+}
+
+.content,
+.stub,
+.footerBand {
+  position: relative;
+  z-index: 2;
+}
+
+.content {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+  align-content: center;
+}
+
+.glass-banner .content {
+  padding: 1.1rem 1.2rem;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    rgba(8, 12, 20, 0.26);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 20px 42px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 78%, transparent);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-size: clamp(1.5rem, 4vw, 2.6rem);
+  line-height: 0.9;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.glass-banner .title {
+  font-size: clamp(2.1rem, 6vw, 4.2rem);
+  line-height: 0.94;
+  max-width: 8ch;
+}
+
+.summary {
+  margin: 0;
+  max-width: 30ch;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 88%, transparent);
+}
+
+.lineup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lineup span {
+  padding: 0.28rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 14%, transparent);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.schedule {
+  display: grid;
+  gap: 0.24rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stub {
+  display: grid;
+  gap: 0.75rem;
+  align-content: space-between;
+  padding: 1rem 0.9rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--ticket-accent, #f4c56d) 18%, transparent), transparent 40%),
+    color-mix(in srgb, var(--ticket-panel, #121d31) 84%, transparent);
+  border-left: 1px dashed color-mix(in srgb, var(--ticket-line, rgba(255,255,255,0.16)) 76%, transparent);
+}
+
+.glass-banner .stub {
+  margin: 0;
+  min-height: auto;
+  border-left: 0;
+  border-radius: 1.2rem;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(8, 12, 20, 0.34);
+  backdrop-filter: blur(22px);
+  box-shadow:
+    0 20px 42px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.festival-pass .stub,
+.ledger-stub .stub {
+  min-height: 100%;
+}
+
+.night-band .footerBand {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem 1rem;
+  background:
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--ticket-panelStrong, #1c2842) 92%, transparent));
+  border-top: 1px solid color-mix(in srgb, var(--ticket-line, rgba(255,255,255,0.16)) 70%, transparent);
+}
+
+.label {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 72%, transparent);
+}
+
+.price {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.glass-banner .price {
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+}
+
+.qrBox {
+  min-height: 5.8rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--ticket-line, rgba(255,255,255,0.16)) 85%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ticket-accentAlt, #f6aa61) 18%, transparent), transparent 58%),
+    color-mix(in srgb, var(--ticket-panelStrong, #1c2842) 88%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+.glass-banner .qrBox {
+  min-height: 7rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ticket-accent, #ff5bbd) 18%, transparent), color-mix(in srgb, var(--ticket-accentAlt, #8bd8ff) 14%, transparent)),
+    rgba(255, 255, 255, 0.08);
+}
+
+.qrPattern {
+  width: 4.2rem;
+  height: 4.2rem;
+  border-radius: 0.85rem;
+  background-image:
+    radial-gradient(circle, currentColor 0 1.4px, transparent 1.6px),
+    linear-gradient(currentColor, currentColor);
+  background-size: 10px 10px, 100% 100%;
+  background-position: center;
+  color: color-mix(in srgb, var(--ticket-foreground, #f7f3eb) 90%, transparent);
+  opacity: 0.9;
+}
+
+.ref {
+  font-size: 0.62rem;
+  line-height: 1.45;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mobileTight {
+  &.glass-banner {
+    grid-template-columns: 1fr;
+    aspect-ratio: 9 / 16;
+  }
+
+  &.festival-pass,
+  &.ledger-stub {
+    grid-template-columns: 1fr;
+    aspect-ratio: 9 / 14;
+  }
+
+  .content,
+  .stub,
+  .footerBand {
+    padding: 0.8rem;
+  }
+
+  .title {
+    font-size: clamp(1.26rem, 8vw, 1.9rem);
+  }
+
+  .summary {
+    font-size: 0.7rem;
+  }
+
+  .lineup span {
+    font-size: 0.56rem;
+  }
+}

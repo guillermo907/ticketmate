@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Script from "next/script";
 import { notFound } from "next/navigation";
-import { renderPosterPage } from "@/components/events/poster-page-renderers";
+import { renderPosterPage, resolvePosterRuntimeEvent } from "@/components/events/poster-page-renderers";
+import { resolvePosterPageDesign } from "@/lib/event-presentation";
 import { getEventBySlug, getUpcomingPublicEvents } from "@/lib/events";
-import { buildPosterDesign } from "@/lib/poster-designer";
 import styles from "./page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,20 @@ type EventPageProps = {
   }>;
 };
 
+function getEventImageUrl(event: Awaited<ReturnType<typeof getEventBySlug>>) {
+  if (!event) {
+    return "";
+  }
+
+  const runtimeEvent = resolvePosterRuntimeEvent(event);
+
+  return (
+    runtimeEvent.posterAssets?.find((asset) => asset.id === runtimeEvent.activePosterAssetId)?.url ??
+    runtimeEvent.posterReferenceUrls?.[0] ??
+    runtimeEvent.heroImage
+  );
+}
+
 export async function generateMetadata({ params }: EventPageProps): Promise<Metadata> {
   const { slug } = await params;
   const event = await getEventBySlug(slug);
@@ -24,24 +38,26 @@ export async function generateMetadata({ params }: EventPageProps): Promise<Meta
       title: "Event not found | Foro GDL",
     };
   }
+  const runtimeEvent = resolvePosterRuntimeEvent(event);
+  const eventImage = getEventImageUrl(event);
 
   return {
-    title: `${event.title} | ${event.venueName}`,
-    description: event.summary,
+    title: `${runtimeEvent.title} | ${runtimeEvent.venueName}`,
+    description: runtimeEvent.summary,
     openGraph: {
       type: "website",
-      title: `${event.title} | ${event.venueName}`,
-      description: event.description,
-      images: [event.posterReferenceUrls?.[0] || event.heroImage],
+      title: `${runtimeEvent.title} | ${runtimeEvent.venueName}`,
+      description: runtimeEvent.description,
+      images: [eventImage],
     },
     twitter: {
       card: "summary_large_image",
-      title: `${event.title} | ${event.venueName}`,
-      description: event.summary,
-      images: [event.posterReferenceUrls?.[0] || event.heroImage],
+      title: `${runtimeEvent.title} | ${runtimeEvent.venueName}`,
+      description: runtimeEvent.summary,
+      images: [eventImage],
     },
     alternates: {
-      canonical: `/events/${event.slug}`,
+      canonical: `/events/${runtimeEvent.slug}`,
     },
   };
 }
@@ -55,23 +71,8 @@ export default async function EventLandingPage({ params }: EventPageProps) {
   }
 
   const upcomingEvents = await getUpcomingPublicEvents();
-  const posterDesignCandidate =
-    (event.isPublished ? event.publishedPoster : undefined) ??
-    event.draftPoster ??
-    event.posterDesign ??
-    buildPosterDesign(event, event.updatedAt);
-  const posterDesign = posterDesignCandidate.shellTheme
-    ? posterDesignCandidate
-    : buildPosterDesign(
-        {
-          ...event,
-          designVariant: posterDesignCandidate.variant,
-          designTemplateId: posterDesignCandidate.templateId,
-          designMotifs: posterDesignCandidate.motifs,
-        },
-        posterDesignCandidate.generatedAt,
-      );
-  const relatedEvents = upcomingEvents.filter((item) => item.slug !== event.slug).slice(0, 3);
+  const { runtimeEvent, posterDesign } = resolvePosterPageDesign(event);
+  const relatedEvents = upcomingEvents.filter((item) => item.slug !== runtimeEvent.slug).slice(0, 3);
   const eventThemeStyle = {
     "--event-page-bg": posterDesign.shellTheme.background,
     "--event-page-fg": posterDesign.shellTheme.foreground,
@@ -89,19 +90,19 @@ export default async function EventLandingPage({ params }: EventPageProps) {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "MusicEvent",
-    name: event.title,
-    description: event.description,
-    startDate: event.startsAt,
-    endDate: event.endsAt,
+    name: runtimeEvent.title,
+    description: runtimeEvent.description,
+    startDate: runtimeEvent.startsAt,
+    endDate: runtimeEvent.endsAt,
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
     eventStatus: "https://schema.org/EventScheduled",
-    image: [event.posterReferenceUrls?.[0] || event.heroImage],
+    image: [getEventImageUrl(event)],
     location: {
       "@type": "MusicVenue",
-      name: event.venueName,
+      name: runtimeEvent.venueName,
       address: {
         "@type": "PostalAddress",
-        streetAddress: event.venueAddress,
+        streetAddress: runtimeEvent.venueAddress,
         addressLocality: "Guadalajara",
         addressRegion: "Jalisco",
         addressCountry: "MX",
@@ -110,20 +111,20 @@ export default async function EventLandingPage({ params }: EventPageProps) {
     offers: {
       "@type": "Offer",
       availability:
-        Math.max(0, event.capacity - event.soldCount) > 0
+        Math.max(0, runtimeEvent.capacity - runtimeEvent.soldCount) > 0
           ? "https://schema.org/InStock"
           : "https://schema.org/SoldOut",
-      price: event.ticketPriceMXN + event.ticketFeeMXN,
+      price: runtimeEvent.ticketPriceMXN + runtimeEvent.ticketFeeMXN,
       priceCurrency: "MXN",
-      url: `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/events/${event.slug}`,
+      url: `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/events/${runtimeEvent.slug}`,
     },
-    performer: event.lineup.map((name) => ({
+    performer: runtimeEvent.lineup.map((name) => ({
       "@type": "MusicGroup",
       name,
     })),
     organizer: {
       "@type": "Organization",
-      name: event.venueName,
+      name: runtimeEvent.venueName,
     },
   };
 
@@ -134,7 +135,7 @@ export default async function EventLandingPage({ params }: EventPageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {renderPosterPage(event, posterDesign, relatedEvents)}
+      {renderPosterPage(runtimeEvent, posterDesign, relatedEvents)}
     </main>
   );
 }

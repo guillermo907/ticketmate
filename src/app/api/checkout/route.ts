@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     idempotencyKey,
     amountMXN: grossAmount,
     description: `${event.title} x${normalizedPayload.quantity}`,
-    payerEmail: normalizedPayload.customer.email ?? session?.user?.email ?? undefined,
+    payerEmail: normalizedPayload.customer?.email ?? session?.user?.email ?? undefined,
     metadata: {
       eventId: event.id,
       checkoutRequestId: upsertedRequest.id

@@ -1,27 +1,23 @@
 import { auth } from "@/auth";
-import type { Session } from "next-auth";
+import { localPreviewSession, resolveAdminSession } from "./admin-access";
 
-export async function requireAdmin(): Promise<Session> {
-  const localAdminPreview = process.env.LOCAL_ADMIN_PREVIEW === "true" && process.env.VERCEL !== "1";
+export function isLocalAdminPreviewEnabled() {
+  return process.env.LOCAL_ADMIN_PREVIEW === "true" && process.env.VERCEL !== "1";
+}
 
-  if (localAdminPreview) {
-    return {
-      expires: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-      user: {
-        email: "local-preview@admin.dev",
-        name: "Local Admin Preview"
-      }
-    };
+export async function requireAdmin() {
+  if (isLocalAdminPreviewEnabled()) {
+    return localPreviewSession();
+  }
+
+  return resolveAdminSession(await auth(), false);
+}
+
+export async function requireAdminSession() {
+  if (isLocalAdminPreviewEnabled()) {
+    return requireAdmin();
   }
 
   const session = await auth();
-
-  if (!session || session.user?.role !== "ADMIN") {
-    throw new Error("Unauthorized admin action.");
-  }
-
-  return {
-    ...session,
-    user: session.user
-  };
+  return session?.user?.role === "ADMIN" ? session : null;
 }

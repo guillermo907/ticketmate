@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 type CachedEnvelope<T> = {
   cachedAt: number;
@@ -71,9 +71,11 @@ export function useCachedData<T>({
   const [error, setError] = useState<string | null>(null);
   const fetchRef = useRef(fetcher);
 
-  fetchRef.current = fetcher;
+  useEffect(() => {
+    fetchRef.current = fetcher;
+  }, [fetcher]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -89,25 +91,40 @@ export function useCachedData<T>({
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [cacheKey, ttlMs]);
 
   useEffect(() => {
     const cached = readCache<T>(cacheKey);
+    let frame = 0;
 
     if (cached?.payload) {
-      startTransition(() => {
-        setData(cached.payload);
+      frame = window.requestAnimationFrame(() => {
+        startTransition(() => {
+          setData(cached.payload);
+          setIsStale(cached.expiresAt <= Date.now());
+          setIsLoading(false);
+        });
       });
-      setIsStale(cached.expiresAt <= Date.now());
-      setIsLoading(false);
 
       if (!revalidateOnMount && cached.expiresAt > Date.now()) {
-        return;
+        return () => {
+          if (frame) {
+            window.cancelAnimationFrame(frame);
+          }
+        };
       }
     }
 
-    void refresh();
-  }, [cacheKey, revalidateOnMount, ttlMs]);
+    frame = window.requestAnimationFrame(() => {
+      void refresh();
+    });
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [cacheKey, refresh, revalidateOnMount]);
 
   return {
     data,

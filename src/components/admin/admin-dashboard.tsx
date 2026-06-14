@@ -3,10 +3,10 @@
 import { useActionState, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { saveThemeSettingsAction, type SaveState } from "@/app/actions/site-content";
+import { restoreThemeRevisionAction, saveThemeSettingsAction, type SaveState } from "@/app/actions/site-content";
 import { HomePagePreview } from "@/components/home/home-page";
 import { applyThemeVariables } from "@/lib/apply-theme-variables";
-import type { SiteContent } from "@/lib/types";
+import type { SiteContent, ThemeRevision } from "@/lib/types";
 import { contrastGrade, contrastRatio, normalizeSiteTheme, readableTextColor, themeCssVariables } from "@/lib/theme-contrast";
 import styles from "./admin-dashboard.module.scss";
 
@@ -154,6 +154,7 @@ type PaletteVariantSet = {
 export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProps) {
   const router = useRouter();
   const [themeState, themeAction, savingTheme] = useActionState(saveThemeSettingsAction, initialState);
+  const [restoreState, restoreAction, restoringTheme] = useActionState(restoreThemeRevisionAction, initialState);
   const [themeDraft, setThemeDraft] = useState(initialContent.theme);
   const [globalPreviewEnabled, setGlobalPreviewEnabled] = useState(false);
   const [paletteLoading, setPaletteLoading] = useState(false);
@@ -195,10 +196,10 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
   }, [adminTheme, persistedTheme]);
 
   useEffect(() => {
-    if (themeState.ok) {
+    if (themeState.ok || restoreState.ok) {
       router.refresh();
     }
-  }, [router, themeState.ok]);
+  }, [restoreState.ok, router, themeState.ok]);
 
   useEffect(() => {
     if (incomingThemeSnapshot === lastSyncedThemeSnapshot.current) {
@@ -310,7 +311,19 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
   return (
     <main
       className={styles.page}
+      data-testid="admin-theme-page"
       style={{
+        ...themeCssVariables({
+          ...initialContent.theme,
+          ...themeDraft,
+          surface: adminSurface,
+          backgroundImage: globalPreviewEnabled ? previewWallpaper : initialContent.theme.backgroundImage,
+          light: {
+            ...initialContent.theme.light,
+            ...themeDraft.light,
+            backgroundImage: globalPreviewEnabled ? previewWallpaper : initialContent.theme.light.backgroundImage,
+          },
+        }),
         "--admin-bg": adminTheme.background,
         "--admin-fg": adminTheme.foreground,
         "--admin-muted": adminTheme.muted,
@@ -326,17 +339,6 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
         "--panel": adminTheme.panel,
         "--panel-strong": adminTheme.panelStrong,
         "--ink": adminTheme.ink,
-        ...themeCssVariables({
-          ...initialContent.theme,
-          ...themeDraft,
-          surface: adminSurface,
-          backgroundImage: globalPreviewEnabled ? previewWallpaper : initialContent.theme.backgroundImage,
-          light: {
-            ...initialContent.theme.light,
-            ...themeDraft.light,
-            backgroundImage: globalPreviewEnabled ? previewWallpaper : initialContent.theme.light.backgroundImage,
-          },
-        }),
         ...(globalPreviewEnabled && previewWallpaper ? { "--admin-preview-wallpaper": `url(${previewWallpaper})` } : { "--admin-preview-wallpaper": "none" }),
         "--admin-preview-wallpaper-opacity": globalPreviewEnabled ? `${adminSurface.wallpaperVisibility / 100}` : "0",
         ...(globalPreviewEnabled
@@ -405,7 +407,7 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
             <details className={styles.card} open>
               <summary>Manual Theme Settings</summary>
               <div className={styles.cardBody}>
-                <form id="themeSettingsForm" action={themeAction} className={styles.compactThemeForm}>
+                <form id="themeSettingsForm" action={themeAction} className={styles.compactThemeForm} data-testid="theme-settings-form">
                   <input type="hidden" name="backgroundImage" value={themeDraft.backgroundImage} />
                   <input type="hidden" name="lightBackgroundImage" value={themeDraft.light.backgroundImage} />
                   <input type="hidden" name="bannerStyle" value={themeDraft.bannerStyle ?? "editorial"} />
@@ -474,6 +476,14 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
                   <div className={styles.actions}><button type="submit" disabled={savingTheme}>{savingTheme ? "Saving..." : "Save Theme"}</button></div>
                 </form>
                 {themeState.message ? <p className={themeState.ok ? styles.success : styles.error}>{themeState.message}</p> : null}
+                {restoreState.message ? <p className={restoreState.ok ? styles.success : styles.error}>{restoreState.message}</p> : null}
+              </div>
+            </details>
+
+            <details className={styles.card} open>
+              <summary>Theme revisions</summary>
+              <div className={styles.cardBody}>
+                <ThemeRevisionList revisions={initialContent.themeHistory ?? []} action={restoreAction} busy={restoringTheme} />
               </div>
             </details>
           </aside>
@@ -559,7 +569,7 @@ function ThemePreview({
   } as CSSProperties;
 
   return (
-    <section className={styles.themePreviewPanel} style={style}>
+    <section className={styles.themePreviewPanel} style={style} data-testid="live-theme-preview">
       <div className={styles.previewPanelHeader}>
         <div className={styles.previewPanelTitle}>
           <span>Live Theme Preview</span>
@@ -668,7 +678,7 @@ function ContrastPicker({
   value: (typeof contrastModes)[number]["value"];
 }) {
   return (
-    <div className={styles.contrastPicker}>
+    <div className={styles.contrastPicker} data-testid={`contrast-picker-${label.toLowerCase().replace(/\s+/g, "-")}`}>
       <span>{label}</span>
       <div>
         {contrastModes.map((option) => (
@@ -710,7 +720,7 @@ function ThemeViewportCard({
   const scale = Math.min(displayWidthPx / width, displayHeightPx / height);
 
   return (
-    <article className={styles.previewViewportCard}>
+    <article className={styles.previewViewportCard} data-testid={`viewport-${label.toLowerCase()}`}>
       <div className={styles.previewViewportHeader}>
         <div>
           <span>{label}</span>
@@ -750,10 +760,44 @@ function ThemePreviewCanvas({
   viewport: "desktop" | "tablet" | "mobile";
 }) {
   return (
-    <div className={styles.themePreviewShell} data-banner-style={bannerStyle} data-viewport={viewport}>
+    <div className={styles.themePreviewShell} data-banner-style={bannerStyle} data-viewport={viewport} data-testid={`preview-shell-${viewport}`}>
       <div className={styles.themePreview}>
         <HomePagePreview content={content} viewport={viewport} />
       </div>
+    </div>
+  );
+}
+
+function ThemeRevisionList({
+  action,
+  busy,
+  revisions
+}: {
+  action: (formData: FormData) => void;
+  busy: boolean;
+  revisions: ThemeRevision[];
+}) {
+  if (revisions.length === 0) {
+    return <p className={styles.revisionHint}>No saved revisions yet. Save two theme changes to unlock restore coverage.</p>;
+  }
+
+  return (
+    <div className={styles.revisionList} data-testid="theme-revision-list">
+      {revisions.map((revision, index) => (
+        <form key={revision.id} action={action} className={styles.revisionCard}>
+          <input type="hidden" name="revisionId" value={revision.id} />
+          <div>
+            <span>{index === 0 ? "Latest previous theme" : "Older previous theme"}</span>
+            <strong>{new Date(revision.savedAt).toLocaleString()}</strong>
+            <small>
+              {revision.theme.bannerStyle ?? "editorial"} · {revision.theme.contrast} / {revision.theme.light.contrast}
+            </small>
+          </div>
+          <button type="submit" disabled={busy}>
+            {busy ? "Restoring..." : `Restore revision ${index + 1}`}
+          </button>
+        </form>
+      ))}
     </div>
   );
 }
@@ -822,7 +866,7 @@ function PaletteOptions({
   variants: PaletteVariant[];
 }) {
   return (
-    <div className={styles.paletteGroup}>
+    <div className={styles.paletteGroup} data-testid={`${mode}-palette-group`}>
       <span>{title}</span>
       <div>
         {variants.map((variant, index) => (

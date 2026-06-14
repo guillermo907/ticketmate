@@ -126,7 +126,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       session.user.role = (token.role as AppRole | undefined) ?? "CUSTOMER";
       session.user.venueId = (token.venueId as string | null | undefined) ?? null;
-      session.user.id = (token.userId as string | null | undefined) ?? null;
+      session.user.id = String(token.userId ?? token.sub ?? "");
 
       return session;
     }
