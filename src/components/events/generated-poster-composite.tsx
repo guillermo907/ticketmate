@@ -194,7 +194,6 @@ function resolvePosterOverlayLayout(
   if (isViewportOverlayLayout(layout)) {
     return {
       ...defaultPosterOverlayLayout,
-      ...(layout.desktop ?? {}),
       ...(layout[viewport] ?? {}),
     } satisfies Required<PosterOverlayLayout>;
   }
@@ -443,20 +442,20 @@ export function GeneratedPosterComposite({
   const related = relatedEvents[0];
   const buyCta = showCta
     ? mode === "preview" ? (
-      <span className={styles.buyButton}>Comprar boleto</span>
+      <span className={styles.buyButton} data-testid={`generated-poster-cta-${mode}-${viewport}`}>Comprar boleto</span>
     ) : (
-      <a className={styles.buyButton} href={`/checkout?event=${event.slug}`}>
+      <a className={styles.buyButton} href={`/checkout?event=${event.slug}`} data-testid={`generated-poster-cta-${mode}-${viewport}`}>
         Comprar boleto
       </a>
     )
     : null;
   const relatedCta =
     showRelated && related && mode === "page" ? (
-      <a className={styles.relatedLink} href={`/events/${related.slug}`}>
+      <a className={styles.relatedLink} href={`/events/${related.slug}`} data-testid={`generated-poster-related-${mode}-${viewport}`}>
         {related.title}
       </a>
     ) : showRelated && related ? (
-      <span className={styles.relatedLink}>{related.title}</span>
+      <span className={styles.relatedLink} data-testid={`generated-poster-related-${mode}-${viewport}`}>{related.title}</span>
     ) : null;
   const metaItems = [
     showVenue ? compactText(event.venueName, viewport === "mobile" ? 16 : viewport === "tablet" ? 22 : 28) : null,
@@ -627,6 +626,9 @@ export function GeneratedPosterComposite({
             ? styles.viewportTablet
             : styles.viewportDesktop,
       ].join(" ")}
+      data-testid={`generated-poster-${mode}-${viewport}`}
+      data-overlay-mode={resolvedOverlayMode}
+      data-artwork-fit={artworkFit}
       data-overlay-density={overlayLayout.density}
       data-card-style={overlayLayout.cardStyle}
       data-text-align={overlayLayout.textAlign}
@@ -641,13 +643,18 @@ export function GeneratedPosterComposite({
     >
       <div className={styles.artworkWrap}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={posterUrl} alt={`Poster oficial de ${event.title}`} className={styles.artwork} />
+        <img
+          src={posterUrl}
+          alt={`Poster oficial de ${event.title}`}
+          className={styles.artwork}
+          data-testid={`generated-poster-artwork-${mode}-${viewport}`}
+        />
       </div>
       <div className={styles.scrim} />
       <div className={styles.grain} />
 
       {metaItems.length > 0 ? (
-        <div className={styles.metaStrip}>
+        <div className={styles.metaStrip} data-testid={`generated-poster-meta-${mode}-${viewport}`}>
           {metaItems.map((item) => (
             <span key={item}>{item}</span>
           ))}
@@ -662,6 +669,7 @@ export function GeneratedPosterComposite({
         }
         onClick={editorMode && onEditorRoleSelect ? () => onEditorRoleSelect("hero", "inner") : undefined}
         data-editor-role={editorMode ? "hero" : undefined}
+        data-testid={`generated-poster-hero-${mode}-${viewport}`}
       >
         <p className={styles.eyebrow}>{headlineGenre}</p>
         <h1 className={styles.title}>{titleRows}</h1>
@@ -682,6 +690,7 @@ export function GeneratedPosterComposite({
           }
           onClick={editorMode && onEditorRoleSelect ? () => onEditorRoleSelect("story", "inner") : undefined}
           data-editor-role={editorMode ? "story" : undefined}
+          data-testid={`generated-poster-story-${mode}-${viewport}`}
         >
           <span>Ciudad en vivo</span>
           <p>{compactText(normalizedDescription, viewport === "desktop" ? 170 : viewport === "tablet" ? 120 : 92)}</p>
@@ -698,6 +707,7 @@ export function GeneratedPosterComposite({
           }
           onClick={editorMode && onEditorRoleSelect ? () => onEditorRoleSelect("lineup", "inner") : undefined}
           data-editor-role={editorMode ? "lineup" : undefined}
+          data-testid={`generated-poster-lineup-${mode}-${viewport}`}
         >
           <span>Lineup</span>
           <div className={styles.lineupList}>
@@ -719,6 +729,7 @@ export function GeneratedPosterComposite({
           }
           onClick={editorMode && onEditorRoleSelect ? () => onEditorRoleSelect("action", "inner") : undefined}
           data-editor-role={editorMode ? "action" : undefined}
+          data-testid={`generated-poster-action-${mode}-${viewport}`}
         >
           <span>{showSchedule ? "Horarios" : showAddress ? "Dirección" : showCta ? "Acceso" : "Relacionado"}</span>
           {showSchedule ? (

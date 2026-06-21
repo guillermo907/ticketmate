@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
+    "test:event-poster-flow": "playwright test --project event-poster-flow",
     "test:ui": "playwright test --ui"
   },
   "dependencies": {

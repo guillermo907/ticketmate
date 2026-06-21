@@ -1,15 +1,18 @@
 "use client";
 
 import type { SiteContent } from "@/lib/types";
+import type { VenueEventRecord } from "@/lib/event-types";
 import { applyThemeVariables } from "@/lib/apply-theme-variables";
 import { normalizeSiteTheme, themeCssVariables } from "@/lib/theme-contrast";
 import Link from "next/link";
 import { useEffect, useMemo, useSyncExternalStore, type CSSProperties } from "react";
+import { PublicEventPosterSection, toMarketEvents } from "./new-market-home-page";
 import { ThemeModeToggle } from "./theme-mode-toggle";
 import styles from "./home-page.module.scss";
 
 type HomePageProps = {
   content: SiteContent;
+  publicEvents?: VenueEventRecord[];
 };
 
 type Locale = "en" | "es";
@@ -61,7 +64,7 @@ function setStoredLocale(locale: Locale) {
   window.dispatchEvent(new Event("site-locale-change"));
 }
 
-export function HomePage({ content }: HomePageProps) {
+export function HomePage({ content, publicEvents }: HomePageProps) {
   const locale = useSyncExternalStore<Locale>(subscribeLocale, getStoredLocale, () => "es");
   const normalizedTheme = useMemo(() => normalizeSiteTheme(content.theme), [content.theme]);
 
@@ -218,6 +221,7 @@ export function HomePage({ content }: HomePageProps) {
   }));
 
   const posterModules = (localized.services ?? []).slice(0, 3);
+  const publicMarketEvents = publicEvents ? toMarketEvents(publicEvents, { useFallback: false }) : undefined;
 
   const navItems: NavItem[] = [
     { href: "#flows", label: labels.flows, tone: "flows" },
@@ -309,6 +313,8 @@ export function HomePage({ content }: HomePageProps) {
           </div>
         </aside>
       </section>
+
+      {publicMarketEvents ? <PublicEventPosterSection events={publicMarketEvents} /> : null}
 
       <section className={styles.flowSection} id="flows">
         <div className={styles.sectionHeading}>

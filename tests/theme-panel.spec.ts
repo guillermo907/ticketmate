@@ -338,7 +338,7 @@ test.describe.serial("theme panel tests", () => {
       background: themeA.background,
       contrast: themeA.contrast,
       bannerStyle: themeA.bannerStyle,
-      history: 1
+      history: Math.min((originalContent.themeHistory?.length ?? 0) + 1, 2)
     });
 
     await expect.poll(async () => {

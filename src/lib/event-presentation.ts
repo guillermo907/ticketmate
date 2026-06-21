@@ -15,6 +15,19 @@ export type PosterCompositeRenderModel = {
   artworkFit: "cover" | "contain";
 };
 
+function resolvePosterArtworkFit(
+  posterAsset: EventPosterAsset | null,
+  overlayMode: PosterTextOverlayMode,
+): "cover" | "contain" {
+  const isUploadedPoster = posterAsset?.assetMode === "uploaded-hero" || posterAsset?.source === "uploaded";
+
+  if (!isUploadedPoster) {
+    return "cover";
+  }
+
+  return overlayMode === "none" ? "contain" : "cover";
+}
+
 export type TicketCompositeRenderModel = {
   event: VenueEventRecord;
   ticketDesign: EventTicketDesign;
@@ -35,7 +48,14 @@ export function resolvePrimaryPosterUrl(event: Partial<VenueEventRecord> | null 
   return activePosterAsset?.url ?? event?.posterReferenceUrls?.find(Boolean) ?? event?.heroImage ?? "";
 }
 
-export function resolvePosterRuntimeEvent(event: VenueEventRecord): VenueEventRecord {
+export function resolvePosterRuntimeEvent(
+  event: VenueEventRecord,
+  options?: { preferLiveEditorState?: boolean },
+): VenueEventRecord {
+  if (options?.preferLiveEditorState) {
+    return event;
+  }
+
   const activePosterAsset = resolveActivePosterAsset(event);
   const snapshot = activePosterAsset?.snapshot;
 
@@ -101,20 +121,21 @@ export function resolvePosterCompositeRenderModel(
     posterAsset?: EventPosterAsset | null;
     overlayMode?: PosterTextOverlayMode;
     artworkFit?: "cover" | "contain";
+    preferLiveEditorState?: boolean;
   },
 ): PosterCompositeRenderModel {
-  const runtimeEvent = resolvePosterRuntimeEvent(event);
+  const runtimeEvent = resolvePosterRuntimeEvent(event, {
+    preferLiveEditorState: options?.preferLiveEditorState,
+  });
   const posterAsset = options?.posterAsset ?? resolveActivePosterAsset(runtimeEvent) ?? null;
   const posterUrl = options?.posterUrl ?? posterAsset?.url ?? resolvePrimaryPosterUrl(runtimeEvent);
-  const artworkFit =
-    options?.artworkFit ??
-    (posterAsset?.assetMode === "uploaded-hero" || posterAsset?.source === "uploaded" ? "contain" : "cover");
   const overlayMode =
     options?.overlayMode ??
     posterAsset?.snapshot?.posterTextOverlayMode ??
     posterAsset?.overlayMode ??
     runtimeEvent.posterTextOverlayMode ??
     "editorial-band";
+  const artworkFit = options?.artworkFit ?? resolvePosterArtworkFit(posterAsset, overlayMode);
 
   return {
     event: runtimeEvent,
@@ -130,9 +151,12 @@ export function resolveTicketCompositeRenderModel(
     ticketDesign?: EventTicketDesign;
     posterDesign?: EventPosterDesign;
     artworkUrl?: string;
+    preferLiveEditorState?: boolean;
   },
 ): TicketCompositeRenderModel {
-  const runtimeEvent = resolvePosterRuntimeEvent(event);
+  const runtimeEvent = resolvePosterRuntimeEvent(event, {
+    preferLiveEditorState: options?.preferLiveEditorState,
+  });
   const posterDesign =
     options?.posterDesign ??
     runtimeEvent.publishedPoster ??

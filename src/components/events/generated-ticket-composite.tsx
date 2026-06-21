@@ -88,6 +88,8 @@ export function GeneratedTicketComposite({
         styles[ticketDesign.templateId],
         isCompact ? styles.mobileTight : "",
       ].join(" ")}
+      data-testid={`generated-ticket-${viewport}`}
+      data-template-id={ticketDesign.templateId}
       style={style}
     >
       {artworkUrl ? (

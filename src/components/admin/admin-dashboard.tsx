@@ -172,6 +172,9 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
   const adminTheme = globalPreviewEnabled ? normalizedTheme : persistedTheme;
   const adminSurface = globalPreviewEnabled ? { ...defaultSurface, ...themeDraft.surface } : { ...defaultSurface, ...initialContent.theme.surface };
   const previewWallpaper = palettePreview || themeDraft.backgroundImage || themeDraft.light.backgroundImage;
+  const adminWallpaper = globalPreviewEnabled
+    ? previewWallpaper
+    : initialContent.theme.backgroundImage || initialContent.theme.light.backgroundImage;
   const previewContent = useMemo(
     () => ({
       ...initialContent,
@@ -339,8 +342,8 @@ export function AdminDashboard({ initialContent, userEmail }: AdminDashboardProp
         "--panel": adminTheme.panel,
         "--panel-strong": adminTheme.panelStrong,
         "--ink": adminTheme.ink,
-        ...(globalPreviewEnabled && previewWallpaper ? { "--admin-preview-wallpaper": `url(${previewWallpaper})` } : { "--admin-preview-wallpaper": "none" }),
-        "--admin-preview-wallpaper-opacity": globalPreviewEnabled ? `${adminSurface.wallpaperVisibility / 100}` : "0",
+        ...(adminWallpaper ? { "--admin-preview-wallpaper": `url(${adminWallpaper})` } : { "--admin-preview-wallpaper": "none" }),
+        "--admin-preview-wallpaper-opacity": adminWallpaper ? `${adminSurface.wallpaperVisibility / 100}` : "0",
         ...(globalPreviewEnabled
           ? {
               "--admin-preview-wallpaper-visibility": `${surface.wallpaperVisibility}%`,

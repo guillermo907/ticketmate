@@ -242,8 +242,8 @@ function resolveViewportOverlayLayouts(layout: VenueEventRecord["posterOverlayLa
   if (isViewportOverlayLayout(layout)) {
     return {
       desktop: { ...defaultPosterOverlayLayout, ...(layout.desktop ?? {}) },
-      tablet: { ...defaultPosterOverlayLayout, ...(layout.desktop ?? {}), ...(layout.tablet ?? {}) },
-      mobile: { ...defaultPosterOverlayLayout, ...(layout.desktop ?? {}), ...(layout.mobile ?? {}) },
+      tablet: { ...defaultPosterOverlayLayout, ...(layout.tablet ?? {}) },
+      mobile: { ...defaultPosterOverlayLayout, ...(layout.mobile ?? {}) },
     };
   }
 
@@ -1302,6 +1302,7 @@ export function VenueWorkspace({
       const preferredId =
         (queryId && safeEvents.some((event) => event.id === queryId) && queryId) ||
         (storedId && safeEvents.some((event) => event.id === storedId) && storedId) ||
+        (selectedId === "new" ? "new" : "") ||
         safeEvents[0]?.id ||
         "new";
 
@@ -1551,15 +1552,25 @@ export function VenueWorkspace({
   } satisfies Record<PosterViewport, { label: string; width: string; height: string; scale: number }>;
   const selectedOverlayViewportMeta = overlayEditorViewportMeta[overlayEditorViewport];
   const activePreviewPosterUrl = renderedPreviewPosterUrl || effectivePosterReferenceUrls[0] || previewDraft.heroImage || "";
-  const previewPosterArtworkFit = designSourceMode === "upload" ? "contain" : "cover";
+  const previewPosterArtworkFit =
+    designSourceMode === "upload" && effectivePosterTextOverlayMode === "none" ? "contain" : "cover";
   const previewTicketModel = useMemo(
     () =>
       resolveTicketCompositeRenderModel(previewDraft, {
         ticketDesign: generatedTicketDesign,
         posterDesign: generatedDesign,
         artworkUrl: ticketPreviewArtworkUrl,
+        preferLiveEditorState: true,
       }),
     [generatedDesign, generatedTicketDesign, previewDraft, ticketPreviewArtworkUrl],
+  );
+  const previewRelatedEvents = useMemo(
+    () =>
+      safeEvents
+        .filter((event) => event.id !== draft.id)
+        .slice(0, 3)
+        .map((event) => ({ slug: event.slug, title: event.title })),
+    [draft.id, safeEvents],
   );
   const overlayEditorGuideBlocks = [
     visiblePosterFields.includes("lineup") && previewDraft.lineup.length > 0
@@ -1655,24 +1666,25 @@ export function VenueWorkspace({
   }
 
   function applyEvent(event: VenueEventRecord | null) {
+    const newDraft = createEmptyDraft();
     const persistedPosterUrl = getPrimaryPosterUrl(event);
     const inferredMode = inferDesignSourceModeFromEvent(event);
     const inferredPresetId = inferSelectedPresetIdFromEvent(event);
     const nextOverlayMode = event?.posterTextOverlayMode ?? "none";
     const hasPoster = Boolean(persistedPosterUrl);
 
-    setDraft(event ? normalizeDraftRecord(event) : emptyDraft);
+    setDraft(event ? normalizeDraftRecord(event) : newDraft);
     setActiveConsoleTab("essentials");
     setActiveVisualTab(inferredMode === "upload" ? "upload" : inferredMode === "ai" ? "library" : "local");
     setOpenSections(defaultSectionState);
     setQuickStartOpen(false);
     setQuickStartStep(0);
-    setQuickStartTitle(event?.title ?? emptyDraft.title);
-    setQuickStartStartsAt(toDateTimeLocalValue(event?.startsAt ?? emptyDraft.startsAt));
-    setQuickStartVenue(event?.venueName ?? emptyDraft.venueName);
-    setQuickStartLineup((event?.lineup ?? emptyDraft.lineup).join(", "));
-    setLineupText((event?.lineup ?? emptyDraft.lineup).join(", "));
-    setGenreText((event?.genre ?? emptyDraft.genre).join(", "));
+    setQuickStartTitle(event?.title ?? newDraft.title);
+    setQuickStartStartsAt(toDateTimeLocalValue(event?.startsAt ?? newDraft.startsAt));
+    setQuickStartVenue(event?.venueName ?? newDraft.venueName);
+    setQuickStartLineup((event?.lineup ?? newDraft.lineup).join(", "));
+    setLineupText((event?.lineup ?? newDraft.lineup).join(", "));
+    setGenreText((event?.genre ?? newDraft.genre).join(", "));
     setPendingHeroPreview("");
     setPendingHeroFileName("");
     setUploadedPosterPreview(inferredMode === "upload" ? persistedPosterUrl : "");
@@ -1930,9 +1942,11 @@ export function VenueWorkspace({
   }
 
   function openQuickStartForNewEvent() {
+    const newDraft = createEmptyDraft();
+
     selectEvent("new");
     setQuickStartTitle("");
-    setQuickStartStartsAt(toDateTimeLocalValue(emptyDraft.startsAt));
+    setQuickStartStartsAt(toDateTimeLocalValue(newDraft.startsAt));
     setQuickStartVenue("");
     setQuickStartLineup("");
     setQuickStartStep(0);
@@ -1970,6 +1984,7 @@ export function VenueWorkspace({
       doorTime: timing.doorTime,
       soundcheckTime: timing.soundcheckTime,
     }));
+    setLineupText(lineup.join(", "));
     setQuickStartOpen(false);
     setOpenSections({
       ...defaultSectionState,
@@ -2787,6 +2802,7 @@ export function VenueWorkspace({
                 className={active ? styles.fieldToggleActive : styles.fieldToggle}
                 onClick={() => togglePosterField(field.id)}
                 aria-pressed={active}
+                data-testid={`poster-field-toggle-${field.id}`}
               >
                 <span className={styles.toggleState}>{active ? "ON" : "OFF"}</span>
                 <strong>{field.label}</strong>
@@ -2812,13 +2828,14 @@ export function VenueWorkspace({
       posterUrl,
       overlayMode: effectivePosterTextOverlayMode,
       artworkFit: previewPosterArtworkFit,
+      preferLiveEditorState: true,
     });
 
     return (
       <GeneratedPosterComposite
         event={posterModel.event}
         posterUrl={posterModel.posterUrl}
-        relatedEvents={[]}
+        relatedEvents={previewRelatedEvents}
         mode="preview"
         viewport={viewport}
         overlayMode={posterModel.overlayMode}
@@ -2865,6 +2882,7 @@ export function VenueWorkspace({
                 setPreviewScreen("preview");
                 setOverlayEditorOpen(true);
               }}
+              data-testid="open-overlay-editor-button"
             >
               Abrir editor visual
             </button>
@@ -2999,12 +3017,20 @@ export function VenueWorkspace({
               <p>Biblioteca</p>
               <h2>Eventos del venue</h2>
             </div>
-            <button type="button" className={styles.createButton} onClick={openQuickStartForNewEvent}>
+            <button
+              type="button"
+              className={styles.createButton}
+              onClick={openQuickStartForNewEvent}
+              data-testid="create-new-event-button"
+            >
               Crear nuevo evento
             </button>
-            <div className={styles.eventList}>
+            <div className={styles.eventList} data-testid="venue-event-list">
               {safeEvents.map((event) => {
                 const posterThumbnailUrl = getEventPosterThumbnailUrl(event);
+                const posterPreviewModel = posterThumbnailUrl
+                  ? resolvePosterCompositeRenderModel(event, { posterUrl: posterThumbnailUrl })
+                  : null;
 
                 return (
                   <button
@@ -3012,6 +3038,7 @@ export function VenueWorkspace({
                     type="button"
                     className={selectedId === event.id ? styles.eventCardActive : styles.eventCard}
                     onClick={() => selectEvent(event.id)}
+                    data-testid={`venue-event-card-${event.id}`}
                   >
                     <div className={styles.eventCardContent}>
                       <div className={styles.eventCardMeta}>
@@ -3021,10 +3048,18 @@ export function VenueWorkspace({
                         <small>{event.isPublished ? "Publicado" : "Draft"}</small>
                       </div>
                       <div className={styles.eventPosterThumb} aria-hidden="true">
-                        <div className={styles.eventPosterThumbFrame}>
-                          {posterThumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={posterThumbnailUrl} alt="" />
+                        <div className={styles.eventPosterThumbFrame} data-testid="venue-event-card-poster-frame">
+                          {posterPreviewModel ? (
+                            <div className={styles.eventPosterThumbPreview} data-testid="venue-event-card-poster-preview">
+                              <GeneratedPosterComposite
+                                event={posterPreviewModel.event}
+                                posterUrl={posterPreviewModel.posterUrl}
+                                mode="preview"
+                                viewport="mobile"
+                                overlayMode={posterPreviewModel.overlayMode}
+                                artworkFit={posterPreviewModel.artworkFit}
+                              />
+                            </div>
                           ) : (
                             <div className={styles.eventPosterThumbFallback}>
                               <span>Sin poster</span>
@@ -3090,7 +3125,7 @@ export function VenueWorkspace({
               <input type="hidden" name="venueName" value={draft.venueName} />
               <input type="hidden" name="venueAddress" value={draft.venueAddress} />
               <input type="hidden" name="heroImage" value={draft.heroImage} />
-              <input type="hidden" name="lineup" value={lineupText} />
+              <input type="hidden" name="lineup" value={lineupText} data-testid="hidden-lineup-input" />
               <input type="hidden" name="genre" value={genreText} />
               <input type="hidden" name="designVariant" value={draft.designVariant ?? ""} />
               <input type="hidden" name="ticketTemplateId" value={draft.ticketTemplateId ?? ""} />
@@ -3104,6 +3139,15 @@ export function VenueWorkspace({
               <textarea hidden readOnly name="posterOverlayLayout" value={JSON.stringify(posterOverlayLayoutsByViewport)} />
               <textarea hidden readOnly name="posterAssetsPayload" value={JSON.stringify(draft.posterAssets ?? [])} />
               <input type="hidden" name="activePosterAssetId" value={draft.activePosterAssetId ?? ""} />
+              <input
+                id="venue-poster-upload-input"
+                className={styles.visuallyHiddenFileInput}
+                type="file"
+                name="posterUploadFile"
+                accept="image/*"
+                onChange={handleUploadedPosterFileChange}
+                data-testid="poster-upload-input"
+              />
               <textarea hidden readOnly name="operationalMoments" value={JSON.stringify(draft.operationalMoments ?? [])} />
               <input type="hidden" name="ticketPriceMXN" value={String(draft.ticketPriceMXN)} />
               <input type="hidden" name="ticketFeeMXN" value={String(draft.ticketFeeMXN)} />
@@ -3448,8 +3492,8 @@ export function VenueWorkspace({
                             />
                             <span className={styles.publishToggleIcon} aria-hidden="true">◎</span>
                             <span className={styles.publishToggleCopy}>
-                              <strong><i className={styles.fieldIcon} aria-hidden="true">◎</i>Publicar landing del evento</strong>
-                              <small>Déjalo listo para circular y vender boletos.</small>
+                              <strong><i className={styles.fieldIcon} aria-hidden="true">◎</i>Hacer evento público</strong>
+                              <small>Muéstralo en la cartelera pública, listados de eventos y página pública para vender boletos.</small>
                             </span>
                           </span>
                         </label>
@@ -3657,12 +3701,11 @@ export function VenueWorkspace({
                             ) : null}
 
                             {designSourceMode === "upload" ? (
-                              <label className={`${styles.fieldCard} ${styles.fullWidth}`}>
+                              <label className={`${styles.fieldCard} ${styles.fullWidth}`} htmlFor="venue-poster-upload-input">
                                 <span className={styles.fieldLabel}>
                                   <strong>Subir poster</strong>
                                   <small>Usa un poster final existente y decide cómo se monta el texto.</small>
                                 </span>
-                                <input type="file" name="posterUploadFile" accept="image/*" onChange={handleUploadedPosterFileChange} />
                               </label>
                             ) : null}
                           </div>
@@ -3678,6 +3721,7 @@ export function VenueWorkspace({
                                     setUploadTextOverlayMode(option.id);
                                     updateDraft("posterTextOverlayMode", option.id);
                                   }}
+                                  data-testid={`upload-overlay-option-${option.id}`}
                                 >
                                   <strong>{option.title}</strong>
                                   <small>{option.detail}</small>
@@ -3725,13 +3769,17 @@ export function VenueWorkspace({
                           <div className={styles.previewBody}>
                             {previewScreen === "preview" ? (
                               effectivePosterReferenceUrls[0] ? (
-                                <div className={styles.viewportPreviewGrid}>
+                                <div className={styles.viewportPreviewGrid} data-testid="poster-studio-preview-grid">
                                   {[
                                     { label: "Desktop", width: "1200px", height: "760px", scale: 0.24, mode: "landscape" },
                                     { label: "Tablet", width: "1024px", height: "768px", scale: 0.26, mode: "tablet" },
                                     { label: "Mobile", width: "390px", height: "844px", scale: 0.34, mode: "mobile" },
                                   ].map((viewport) => (
-                                    <article key={viewport.label} className={styles.viewportCard}>
+                                    <article
+                                      key={viewport.label}
+                                      className={styles.viewportCard}
+                                      data-testid={`poster-studio-viewport-${viewport.mode === "mobile" ? "mobile" : viewport.mode === "tablet" ? "tablet" : "desktop"}`}
+                                    >
                                       <div className={styles.viewportCardHeader}>
                                         <span>{viewport.label}</span>
                                         <strong>{viewport.width.replace("px", "")} × {viewport.height.replace("px", "")}</strong>
@@ -3747,16 +3795,12 @@ export function VenueWorkspace({
                                         }
                                       >
                                         <div className={`${styles.generatedViewportFrame} ${styles[`generatedViewportFrame${viewport.mode === "mobile" ? "Mobile" : viewport.mode === "tablet" ? "Tablet" : "Desktop"}`]}`}>
-                                          <GeneratedPosterComposite
-                                            event={previewDraft}
-                                            posterUrl={effectivePosterReferenceUrls[0]}
-                                            relatedEvents={[]}
-                                            mode="preview"
-                                            viewport={viewport.mode === "mobile" ? "mobile" : viewport.mode === "tablet" ? "tablet" : "desktop"}
-                                            overlayMode={effectivePosterTextOverlayMode}
-                                            artworkFit={designSourceMode === "upload" ? "contain" : "cover"}
-                                            themeVars={previewPosterThemeVars}
-                                          />
+                                          <div className={styles.generatedViewportCanvas}>
+                                            {renderPosterViewportComposite(
+                                              viewport.mode === "mobile" ? "mobile" : viewport.mode === "tablet" ? "tablet" : "desktop",
+                                              effectivePosterReferenceUrls[0],
+                                            )}
+                                          </div>
                                         </div>
                                       </div>
                                     </article>
@@ -3950,6 +3994,7 @@ export function VenueWorkspace({
                         placeholder="Ej: La Sonora Pixel, DJ Nopal, invitado sorpresa"
                         onChange={(event) => setLineupText(event.target.value)}
                         onBlur={(event) => commitLineupText(event.target.value)}
+                        data-testid="event-lineup-input"
                       />
                     </label>
                   </div>
@@ -4174,8 +4219,7 @@ export function VenueWorkspace({
                             </article>
                           </div>
                           <div className={styles.uploadPosterPanel}>
-                            <label className={styles.uploadPosterDrop}>
-                              <input name="posterUploadFile" type="file" accept="image/*" onChange={handleUploadedPosterFileChange} />
+                            <label className={styles.uploadPosterDrop} htmlFor="venue-poster-upload-input">
                               <span>Archivo base</span>
                               <strong>{uploadedPosterFileName || "Selecciona un archivo para subir"}</strong>
                               <em>Seleccionar archivo</em>
@@ -4598,6 +4642,7 @@ export function VenueWorkspace({
                                     updateDraft("posterArtDirection", `Uploaded poster with ${option.id} overlay`);
                                   }}
                                   aria-pressed={active}
+                                  data-testid={`wizard-upload-overlay-option-${option.id}`}
                                 >
                                   <strong>{option.title}</strong>
                                   <small>{option.detail}</small>
@@ -5123,8 +5168,8 @@ export function VenueWorkspace({
                       <input type="checkbox" name="isPublished" checked={draft.isPublished} onChange={(event) => updateDraft("isPublished", event.target.checked)} />
                       <span className={styles.publishToggleIcon} aria-hidden="true">◎</span>
                       <span className={styles.publishToggleCopy}>
-                        <strong><i className={styles.fieldIcon} aria-hidden="true">◎</i>Publicar landing del evento</strong>
-                        <small>Activa la versión pública del evento para que ya pueda circular y vender boletos.</small>
+                        <strong><i className={styles.fieldIcon} aria-hidden="true">◎</i>Hacer evento público</strong>
+                        <small>Activa la cartelera pública, los listados de eventos y el sitio publicado para vender boletos.</small>
                       </span>
                     </label>
                   </div>
@@ -5380,13 +5425,17 @@ export function VenueWorkspace({
               <div className={styles.previewBody}>
                 {previewScreen === "preview" ? (
                   activePreviewPosterUrl ? (
-                    <div className={styles.viewportPreviewGrid}>
+                    <div className={styles.viewportPreviewGrid} data-testid="general-preview-grid">
                       {[
                         { label: "Desktop", width: "1200px", height: "760px", scale: 0.24, mode: "desktop" },
                         { label: "Tablet", width: "1024px", height: "768px", scale: 0.26, mode: "tablet" },
                         { label: "Mobile", width: "390px", height: "844px", scale: 0.34, mode: "mobile" },
                       ].map((viewport) => (
-                        <article key={viewport.label} className={styles.viewportCard}>
+                        <article
+                          key={viewport.label}
+                          className={styles.viewportCard}
+                          data-testid={`general-preview-viewport-${viewport.mode}`}
+                        >
                           <div className={styles.viewportCardHeader}>
                             <span>{viewport.label}</span>
                             <strong>
@@ -5492,7 +5541,13 @@ export function VenueWorkspace({
         </div>
       ) : null}
       {overlayEditorOpen ? (
-        <div className={styles.overlayEditorModalWrap} role="dialog" aria-modal="true" aria-labelledby="overlay-editor-title">
+        <div
+          className={styles.overlayEditorModalWrap}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="overlay-editor-title"
+          data-testid="overlay-editor-modal"
+        >
           <div
             className={styles.overlayEditorModalBackdrop}
             onClick={() => setOverlayEditorOpen(false)}
@@ -5551,6 +5606,7 @@ export function VenueWorkspace({
                         <div
                           ref={overlayEditorPreviewRef}
                           data-editor-viewport={overlayEditorViewport}
+                          data-testid={`overlay-editor-preview-${overlayEditorViewport}`}
                           className={`${styles.generatedViewportFrame} ${styles.overlayEditorPreviewFrame} ${styles[`generatedViewportFrame${overlayEditorViewport === "mobile" ? "Mobile" : overlayEditorViewport === "tablet" ? "Tablet" : "Desktop"}`]}`}
                         >
                           <div className={styles.generatedViewportCanvas}>
@@ -5904,9 +5960,9 @@ export function VenueWorkspace({
         </div>
       ) : null}
       {quickStartOpen ? (
-        <div className={styles.quickStartOverlay}>
+        <div className={styles.quickStartOverlay} data-testid="quick-start-overlay">
           <div className={styles.quickStartBackdrop} />
-          <section className={styles.quickStartCard}>
+          <section className={styles.quickStartCard} data-testid="quick-start-card">
             <div className={styles.quickStartHeader}>
               <div>
                 <span>Paso {quickStartStep + 1}/3</span>
@@ -5931,6 +5987,7 @@ export function VenueWorkspace({
                   className={styles.quickStartInput}
                   value={quickStartTitle}
                   placeholder="Ej: Midnight Cumbia Systems"
+                  data-testid="quick-start-title-input"
                   onChange={(event) => setQuickStartTitle(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -5951,6 +6008,7 @@ export function VenueWorkspace({
                     className={styles.quickStartInput}
                     type="datetime-local"
                     value={quickStartStartsAt}
+                    data-testid="quick-start-starts-at-input"
                     onChange={(event) => setQuickStartStartsAt(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -5963,6 +6021,7 @@ export function VenueWorkspace({
                     className={styles.quickStartInput}
                     value={quickStartVenue}
                     placeholder="Ej: Foro GDL"
+                    data-testid="quick-start-venue-input"
                     onChange={(event) => setQuickStartVenue(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -5983,6 +6042,7 @@ export function VenueWorkspace({
                   className={styles.quickStartInput}
                   value={quickStartLineup}
                   placeholder="Ej: La Sonora Pixel, DJ Nopal, Brass After Dark"
+                  data-testid="quick-start-lineup-input"
                   onChange={(event) => setQuickStartLineup(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -6003,7 +6063,12 @@ export function VenueWorkspace({
               >
                 Atrás
               </button>
-              <button type="button" className={styles.saveButton} onClick={advanceQuickStart}>
+              <button
+                type="button"
+                className={styles.saveButton}
+                onClick={advanceQuickStart}
+                data-testid="quick-start-next-button"
+              >
                 {quickStartStep === 2 ? "Empezar dirección visual →" : "Siguiente →"}
               </button>
             </div>

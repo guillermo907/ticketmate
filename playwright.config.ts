@@ -26,6 +26,14 @@ export default defineConfig({
       }
     },
     {
+      name: "event-poster-flow",
+      grep: /@event-poster-flow/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: "http://127.0.0.1:3100"
+      }
+    },
+    {
       name: "security",
       grep: /@security/,
       use: {
